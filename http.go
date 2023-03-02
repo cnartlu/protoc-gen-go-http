@@ -98,18 +98,28 @@ func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.
 		return
 	}
 	var tpl string
+	g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "context"})
+	g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "net/http"})
 	switch frame {
 	case "gin":
-		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "context"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "errors"})
-		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "net/http"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/gin-gonic/gin"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/gin-gonic/gin/binding"})
 		tpl = ginTemplate
 	case "echo":
-		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "context"})
-		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "net/http"})
+		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "net/url"})
+		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "strings"})
+		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "io"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/labstack/echo/v4"})
+		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/go-kratos/kratos/v2/encoding"})
+		var encodingForm = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/form")
+		var encodingJson = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/json")
+		var encodingXml = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/xml")
+		g.P("var (")
+		g.P("_ = ", encodingForm.Ident("Name"))
+		g.P("_ = ", encodingJson.Ident("Name"))
+		g.P("_ = ", encodingXml.Ident("Name"))
+		g.P(")")
 		tpl = echoTemplate
 	default:
 		fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: this %s http frame is not supported\n", frame)
@@ -378,15 +388,78 @@ func buildPathVars(path string) (res map[string]*string) {
 		fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: Path %s should not end with \"/\" \n", path)
 	}
 	res = make(map[string]*string)
-	pattern := regexp.MustCompile(`(?i){([a-z\.0-9_\s]*)=?([^{}]*)}`)
-	matches := pattern.FindAllStringSubmatch(path, -1)
-	for _, m := range matches {
-		name := strings.TrimSpace(m[1])
-		if len(name) > 1 && len(m[2]) > 0 {
-			res[name] = &m[2]
-		} else {
-			res[name] = nil
+
+	{
+		var (
+			isStartVarCheck = false
+			varStartStr     = ""
+			varName         = ""
+		)
+		for _, r := range path {
+			s := string(r)
+			// 如果是 / 则开启变量转换
+			if isStartVarCheck {
+				// 变量开启字符串为空
+				if varStartStr == "" {
+					switch s {
+					case "*", ":", "{":
+						varStartStr = s
+						varName = ""
+					default:
+						isStartVarCheck = false
+					}
+					continue
+				}
+				var isVarEnd = false
+				if s == "}" {
+					if varStartStr != "{" {
+						varName += s
+						continue
+					}
+					isVarEnd = true
+				} else if s == "/" {
+					isVarEnd = true
+				}
+				if isVarEnd {
+					varStartStr = ""
+					v := camelCase(varName)
+					res[varName] = &v
+					continue
+				}
+				// 变量第一条数据必须是英文字符
+				if varName == "" {
+					// varName += varName
+					// continue
+					// if (s >= "a" && s <= "z") || (s >= "A" && s <= "Z") {
+					// 	varName += varName
+					// 	continue
+					// }
+					// fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: Path %s should not end with \"a-zA-Z\" \n", path)
+				}
+				varName += s
+				continue
+			}
+			if s == "/" {
+				isStartVarCheck = true
+				varStartStr = ""
+			}
+		}
+		if isStartVarCheck && varName != "" {
+			isStartVarCheck = false
+			v := camelCase(varName)
+			res[varName] = &v
 		}
 	}
+
+	// pattern := regexp.MustCompile(`(?i){([a-z\.0-9_\s]*)=?([^{}]*)}`)
+	// matches := pattern.FindAllStringSubmatch(path, -1)
+	// for _, m := range matches {
+	// 	name := strings.TrimSpace(m[1])
+	// 	if len(name) > 1 && len(m[2]) > 0 {
+	// 		res[name] = &m[2]
+	// 	} else {
+	// 		res[name] = nil
+	// 	}
+	// }
 	return
 }
