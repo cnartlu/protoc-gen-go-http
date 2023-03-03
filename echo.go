@@ -17,11 +17,14 @@ func Register{{.ServiceType}}HttpServer(r {{$svrType}}ServiceRegistrar, srv {{$s
 {{range .Methods}}
 func _{{$svrType}}_{{.Name}}{{.Num}}_HTTP_Handler(srv {{$svrType}}Server) v4.HandlerFunc {
 	return func(c v4.Context) error {
-		var req *{{.Request}} = new({{.Request}})
-		var err error
-		ctx := c.Request().Context()
-		var coding encoding.Codec
-		var unmarshalData []byte
+		var (
+			req *{{.Request}} = new({{.Request}})
+			res *{{.Reply}} = new({{.Reply}})
+			err error
+			ctx = c.Request().Context()
+			coding encoding.Codec
+			unmarshalData []byte
+		)
 		{{- if eq .Method "GET"}}
 		coding = encoding.GetCodec(form.Name)
 		urlValues := c.Request().URL.Query()
@@ -90,8 +93,7 @@ func _{{$svrType}}_{{.Name}}{{.Num}}_HTTP_Handler(srv {{$svrType}}Server) v4.Han
 		if err := c.Validate(req{{.Body}}); err != nil && err != v4.ErrValidatorNotRegistered {
 			return err
 		}
-		res, err := srv.{{.Name}}(context.WithValue(ctx, v4.DefaultBinder{}, c), req)
-		if err != nil {
+		if res, err = srv.{{.Name}}(context.WithValue(ctx, v4.DefaultBinder{}, c), req); err != nil {
 			return err
 		}
 		return c.JSON(http.StatusOK, res)
