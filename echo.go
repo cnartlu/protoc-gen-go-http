@@ -55,6 +55,11 @@ func _{{$svrType}}_{{.Name}}{{.Num}}_HTTP_Handler(srv {{$svrType}}Server) v4.Han
 			{{- end}}
 			coding = encoding.GetCodec(json.Name)
 		case strings.HasPrefix(ctype, v4.MIMEApplicationXML), strings.HasPrefix(ctype, v4.MIMETextXML):
+			unmarshalData, err = io.ReadAll(c.Request().Body)
+			if err != nil {
+				return err
+			}
+			coding = encoding.GetCodec(xml.Name)
 		case strings.HasPrefix(ctype, v4.MIMEApplicationForm), strings.HasPrefix(ctype, v4.MIMEMultipartForm):
 			params, err := c.FormParams()
 			if err != nil {
