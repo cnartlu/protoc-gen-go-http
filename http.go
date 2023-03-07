@@ -126,6 +126,67 @@ func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.
 	}
 
 	g.P()
+	for _, message := range file.Messages {
+		var _ = message
+		// g.P("func (x *", message.Desc.Name(), ") ParamBind(c v4.Context, fieldName string) {")
+		// for _, field := range message.Fields {
+		// 	kind := field.Desc.Kind()
+		// 	if field.Message != nil {
+
+		// 	} else if field.Oneof != nil {
+
+		// 	} else if field.Enum != nil {
+
+		// 	} else if field.Desc.IsMap() {
+
+		// 	} else if field.Desc.IsList() {
+
+		// 	} else {
+		// 		g.P("x.", field.Desc.Name())
+		// 		switch kind {
+		// 		case protoreflect.BoolKind:
+		// 			return "bool"
+		// 		// case protoreflect.EnumKind:
+		// 		// 	return "enum"
+		// 		case protoreflect.Int32Kind:
+		// 			return "int32"
+		// 		case protoreflect.Sint32Kind:
+		// 			return "sint32"
+		// 		case protoreflect.Uint32Kind:
+		// 			return "uint32"
+		// 		case protoreflect.Int64Kind:
+		// 			return "int64"
+		// 		case protoreflect.Sint64Kind:
+		// 			return "sint64"
+		// 		case protoreflect.Uint64Kind:
+		// 			return "uint64"
+		// 		case protoreflect.Sfixed32Kind:
+		// 			return "sfixed32"
+		// 		case protoreflect.Fixed32Kind:
+		// 			return "fixed32"
+		// 		case protoreflect.FloatKind:
+		// 			return "float"
+		// 		case protoreflect.Sfixed64Kind:
+		// 			return "sfixed64"
+		// 		case protoreflect.Fixed64Kind:
+		// 			return "fixed64"
+		// 		case protoreflect.DoubleKind:
+		// 			return "double"
+		// 		case protoreflect.StringKind:
+		// 			return "string"
+		// 		case protoreflect.BytesKind:
+		// 			return "bytes"
+		// 		// case protoreflect.MessageKind:
+		// 		// 	return "message"
+		// 		// case protoreflect.GroupKind:
+		// 		// 	return "group"
+		// 		default:
+		// 			return fmt.Sprintf("<unknown:%d>", k)
+		// 		}
+		// 	}
+		// }
+		// g.P("}")
+	}
 	for _, service := range file.Services {
 		genService(gen, file, g, service, omitempty, tpl)
 	}

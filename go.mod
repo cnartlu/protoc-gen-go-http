@@ -1,4 +1,4 @@
-module github.com/go-woo/protoc-gen-echo
+module github.com/cnartlu/protoc-gen-go-http
 
 go 1.18
 
