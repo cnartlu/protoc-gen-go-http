@@ -49,6 +49,8 @@ type methodDesc struct {
 	Num int
 	// 请求体名称
 	Request string
+	// 请求体绑定名称
+	RequestBindName string
 	// 响应体名称
 	Reply string
 	// 路由路径
@@ -98,95 +100,34 @@ func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.
 		return
 	}
 	var tpl string
-	g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "context"})
 	g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "net/http"})
 	switch frame {
 	case "gin":
+		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "context"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "errors"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/gin-gonic/gin"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/gin-gonic/gin/binding"})
 		tpl = ginTemplate
 	case "echo":
 		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "net/url"})
-		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "strings"})
-		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "io"})
+		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "strings"})
+		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "io"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/labstack/echo/v4"})
-		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/go-kratos/kratos/v2/encoding"})
-		var encodingForm = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/form")
-		var encodingJson = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/json")
-		var encodingXml = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/xml")
-		g.P("var (")
-		g.P("_ = ", encodingForm.Ident("Name"))
-		g.P("_ = ", encodingJson.Ident("Name"))
-		g.P("_ = ", encodingXml.Ident("Name"))
-		g.P(")")
+		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/go-kratos/kratos/v2/encoding"})
+		// var encodingForm = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/form")
+		// var encodingJson = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/json")
+		// var encodingXml = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/xml")
+		// g.P("var (")
+		// g.P("_ = ", encodingForm.Ident("Name"))
+		// g.P("_ = ", encodingJson.Ident("Name"))
+		// g.P("_ = ", encodingXml.Ident("Name"))
+		// g.P(")")
 		tpl = echoTemplate
 	default:
 		fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: this %s http frame is not supported\n", frame)
 	}
 
 	g.P()
-	for _, message := range file.Messages {
-		var _ = message
-		// g.P("func (x *", message.Desc.Name(), ") ParamBind(c v4.Context, fieldName string) {")
-		// for _, field := range message.Fields {
-		// 	kind := field.Desc.Kind()
-		// 	if field.Message != nil {
-
-		// 	} else if field.Oneof != nil {
-
-		// 	} else if field.Enum != nil {
-
-		// 	} else if field.Desc.IsMap() {
-
-		// 	} else if field.Desc.IsList() {
-
-		// 	} else {
-		// 		g.P("x.", field.Desc.Name())
-		// 		switch kind {
-		// 		case protoreflect.BoolKind:
-		// 			return "bool"
-		// 		// case protoreflect.EnumKind:
-		// 		// 	return "enum"
-		// 		case protoreflect.Int32Kind:
-		// 			return "int32"
-		// 		case protoreflect.Sint32Kind:
-		// 			return "sint32"
-		// 		case protoreflect.Uint32Kind:
-		// 			return "uint32"
-		// 		case protoreflect.Int64Kind:
-		// 			return "int64"
-		// 		case protoreflect.Sint64Kind:
-		// 			return "sint64"
-		// 		case protoreflect.Uint64Kind:
-		// 			return "uint64"
-		// 		case protoreflect.Sfixed32Kind:
-		// 			return "sfixed32"
-		// 		case protoreflect.Fixed32Kind:
-		// 			return "fixed32"
-		// 		case protoreflect.FloatKind:
-		// 			return "float"
-		// 		case protoreflect.Sfixed64Kind:
-		// 			return "sfixed64"
-		// 		case protoreflect.Fixed64Kind:
-		// 			return "fixed64"
-		// 		case protoreflect.DoubleKind:
-		// 			return "double"
-		// 		case protoreflect.StringKind:
-		// 			return "string"
-		// 		case protoreflect.BytesKind:
-		// 			return "bytes"
-		// 		// case protoreflect.MessageKind:
-		// 		// 	return "message"
-		// 		// case protoreflect.GroupKind:
-		// 		// 	return "group"
-		// 		default:
-		// 			return fmt.Sprintf("<unknown:%d>", k)
-		// 		}
-		// 	}
-		// }
-		// g.P("}")
-	}
 	for _, service := range file.Services {
 		genService(gen, file, g, service, omitempty, tpl)
 	}
@@ -324,17 +265,20 @@ func buildMethodDesc(g *protogen.GeneratedFile, m *protogen.Method, method, path
 		path = replacePath(v, "", path)
 	}
 
-	return &methodDesc{
-		Name:         m.GoName,
-		OriginalName: string(m.Desc.Name()),
-		Num:          methodSets[m.GoName],
-		Request:      g.QualifiedGoIdent(m.Input.GoIdent),
-		Reply:        g.QualifiedGoIdent(m.Output.GoIdent),
-		Path:         path,
-		Method:       method,
-		HasVars:      len(vars) > 0,
-		Vars:         vars,
+	v := methodDesc{
+		Name:            m.GoName,
+		OriginalName:    string(m.Desc.Name()),
+		Num:             methodSets[m.GoName],
+		Request:         g.QualifiedGoIdent(m.Input.GoIdent),
+		RequestBindName: "",
+		Reply:           g.QualifiedGoIdent(m.Output.GoIdent),
+		Path:            path,
+		Method:          method,
+		HasVars:         len(vars) > 0,
+		Vars:            vars,
 	}
+	v.RequestBindName = strings.ReplaceAll(camelCaseVars(v.Request), ".", "")
+	return &v
 }
 
 func replacePath(name string, value string, path string) string {
