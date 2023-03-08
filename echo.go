@@ -9,9 +9,11 @@ var echoTemplate = `
 // for forward compatibility
 type {{$svrType}}HttpServer interface {
 	{{$svrType}}Server
-	// Bind(v4.Context, any) error
+	SetHttpResponse(v4.Context, any) error
 	{{- range .Methods}}
+	{{- if not .RequestBindHide}}
 	Bind{{.RequestBindName}}(v4.Context) (*{{.Request}}, error)
+	{{- end}}
 	{{- end}}
 	mustEmbedUnimplemented{{$svrType}}HttpServer()
 }
@@ -20,15 +22,67 @@ type {{$svrType}}HttpServer interface {
 type Unimplemented{{$svrType}}HttpServer struct {
 }
 
-func (Unimplemented{{$svrType}}HttpServer) Bind(c v4.Context, v any) error {
-	return v4.NewHTTPError(http.StatusBadRequest, "bind method Bind not implemented")
+func (u Unimplemented{{$svrType}}HttpServer) SetHttpResponse(c v4.Context, v any) error {
+	return c.JSON(http.StatusOK, v)
 }
 {{- range .Methods}}
-func (Unimplemented{{$svrType}}HttpServer) Bind{{.RequestBindName}}(c v4.Context) (*{{.Request}}, error) {
-	return nil, v4.NewHTTPError(http.StatusBadRequest, "bind method Bind{{.RequestBindName}} not implemented")
-}
+	{{- if not .RequestBindHide}}
+		func (u Unimplemented{{$svrType}}HttpServer) Bind{{.RequestBindName}}(c v4.Context) (*{{.Request}}, error) {
+			{{- if gt .Num 0}}
+			return u.Bind{{.RequestBindOriginName}}(c)
+		{{- else}}
+			var req *{{.Request}} = new({{.Request}})
+			{{- if eq .Method "GET"}}
+			if err := u.bindByQuery(c, req); err != nil {
+				return nil, err
+			}
+			{{- else}}
+			if err := u.bindByJson(c, req); err != nil {
+				return nil, err
+			}
+			{{- end}}
+			{{- /* 绑定路径参数 */ -}}
+			{{- if .HasVars}}
+				// TODO: 未实现参数绑定，后续应当支持
+				{{- range $k, $v := .Vars}}
+				// if v := c.Param("{{$k}}"); v != "" {
+				// 	d, err := strcovc.ParseInt(c.Param("{{$k}}"), 10, 64)
+				// 	if err != nil {
+				// 		return nil, err
+				// 	}
+				// 	req.{{$v}} = uint64(d)
+				// }
+				{{- end}}
+			{{- end}}
+			return req, nil
+		{{- end}}
+		}
+	{{- end}}
 {{- end}}
-func (Unimplemented{{$svrType}}HttpServer) mustEmbedUnimplemented{{$svrType}}HttpServer() {}
+func (u Unimplemented{{$svrType}}HttpServer) bindByQuery(c v4.Context, v any) error {
+	coding := encoding.GetCodec(form.Name)
+	if err := coding.Unmarshal([]byte(c.Request().URL.Query().Encode()), v); err != nil {
+		return err
+	}
+	return nil
+}
+func (u Unimplemented{{$svrType}}HttpServer) bindByJson(c v4.Context, v any) error {
+	if c.Request().ContentLength > 0 {
+		coding := encoding.GetCodec(json.Name)
+		r := io.LimitReader(c.Request().Body, 32 << 20)
+		b, err := io.ReadAll(r)
+		if err != nil {
+			return err
+		}
+		if err := coding.Unmarshal(b, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (Unimplemented{{$svrType}}HttpServer) mustEmbedUnimplemented{{$svrType}}HttpServer() {
+	{{- /* return nil, v4.NewHTTPError(http.StatusBadRequest, "bind method Bind not implemented") */ -}}
+}
 
 // Unsafe{{$svrType}}HttpServer may be embedded to opt out of forward compatibility for this service.
 // Use of this interface is not recommended, as added methods to {{$svrType}}HttpServer will
@@ -55,16 +109,18 @@ func _{{$svrType}}_{{.Name}}{{.Num}}_HTTP_Handler(srv {{$svrType}}HttpServer) v4
 			res *{{.Reply}} = new({{.Reply}})
 			err error
 		)
+		{{- if not .RequestBindHide}}
 		if req, err = srv.Bind{{.RequestBindName}}(c); err != nil {
 			return err
 		}
 		if err := c.Validate(req); err != nil {
 			return err
 		}
+		{{- end}}
 		if res, err = srv.{{.Name}}(c.Request().Context(), req); err != nil {
 			return err
 		}
-		return c.JSON(http.StatusOK, res)
+		return srv.SetHttpResponse(c, res)
 	}
 }
 {{end}}

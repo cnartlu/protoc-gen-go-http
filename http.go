@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -50,7 +51,9 @@ type methodDesc struct {
 	// 请求体名称
 	Request string
 	// 请求体绑定名称
-	RequestBindName string
+	RequestBindName       string
+	RequestBindOriginName string
+	RequestBindHide       bool
 	// 响应体名称
 	Reply string
 	// 路由路径
@@ -111,17 +114,17 @@ func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.
 	case "echo":
 		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "net/url"})
 		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "strings"})
-		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "io"})
+		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "io"})
 		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/labstack/echo/v4"})
-		// g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/go-kratos/kratos/v2/encoding"})
-		// var encodingForm = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/form")
-		// var encodingJson = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/json")
+		g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "github.com/go-kratos/kratos/v2/encoding"})
+		var encodingForm = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/form")
+		var encodingJson = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/json")
 		// var encodingXml = protogen.GoImportPath("github.com/go-kratos/kratos/v2/encoding/xml")
-		// g.P("var (")
-		// g.P("_ = ", encodingForm.Ident("Name"))
-		// g.P("_ = ", encodingJson.Ident("Name"))
+		g.P("var (")
+		g.P("_ = ", encodingForm.Ident("Name"))
+		g.P("_ = ", encodingJson.Ident("Name"))
 		// g.P("_ = ", encodingXml.Ident("Name"))
-		// g.P(")")
+		g.P(")")
 		tpl = echoTemplate
 	default:
 		fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: this %s http frame is not supported\n", frame)
@@ -228,23 +231,28 @@ func buildHTTPRule(g *protogen.GeneratedFile, m *protogen.Method, rule *annotati
 }
 
 func buildMethodDesc(g *protogen.GeneratedFile, m *protogen.Method, method, path string, host string) *methodDesc {
-	defer func() { methodSets[m.GoName]++ }()
+	defer func() { methodSets[string(m.Desc.Name())]++ }()
 
 	vars := buildPathVars(path)
-
+	// TODO 变量必须是 数值、字符串、布尔、时间类型
 	for v, s := range vars {
-		fields := m.Input.Desc.Fields()
-
 		if s != nil {
 			path = replacePath(v, *s, path)
 		}
-		for _, field := range strings.Split(v, ".") {
+		// ingore 替换变量路径比如 {id} => :id
+		fields := m.Input.Desc.Fields()
+
+		varSplits := strings.Split(v, ".")
+		varSplitsLen := len(varSplits)
+		for idx, field := range varSplits {
 			if strings.TrimSpace(field) == "" {
 				continue
 			}
 			if strings.Contains(field, ":") {
 				field = strings.Split(field, ":")[0]
 			}
+			isLastVar := (varSplitsLen - idx) == 1
+			_ = isLastVar
 			fd := fields.ByName(protoreflect.Name(field))
 			if fd == nil {
 				fmt.Fprintf(os.Stderr, "\u001B[31mERROR\u001B[m: The corresponding field '%s' declaration in message could not be found in '%s'\n", v, path)
@@ -255,29 +263,42 @@ func buildMethodDesc(g *protogen.GeneratedFile, m *protogen.Method, method, path
 			} else if fd.IsList() {
 				fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: The field in path:'%s' shouldn't be a list.\n", v)
 			} else if fd.Kind() == protoreflect.MessageKind || fd.Kind() == protoreflect.GroupKind {
-				//fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: The field in path:'%s' shouldn't be a message or group follow ent.\n", v)
 				fields = fd.Message().Fields()
+				// if isLastVar {
+				// 	switch fd.FullName() {
+				// 	case "":
+				// 	default:
+				// 		fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: The field in path:'%s' shouldn't be a list.\n", v)
+				// 		os.Exit(2)
+				// 	}
+				// }
+				// continue
 			}
 		}
 	}
 
-	for v, _ := range vars {
-		path = replacePath(v, "", path)
-	}
-
 	v := methodDesc{
-		Name:            m.GoName,
-		OriginalName:    string(m.Desc.Name()),
-		Num:             methodSets[m.GoName],
-		Request:         g.QualifiedGoIdent(m.Input.GoIdent),
-		RequestBindName: "",
-		Reply:           g.QualifiedGoIdent(m.Output.GoIdent),
-		Path:            path,
-		Method:          method,
-		HasVars:         len(vars) > 0,
-		Vars:            vars,
+		Name:                  m.GoName,
+		OriginalName:          string(m.Desc.Name()),
+		Num:                   methodSets[string(m.Desc.FullName())],
+		Request:               g.QualifiedGoIdent(m.Input.GoIdent),
+		RequestBindName:       "",
+		RequestBindOriginName: "",
+		Reply:                 g.QualifiedGoIdent(m.Output.GoIdent),
+		Path:                  path,
+		Method:                method,
+		HasVars:               len(vars) > 0,
+		Vars:                  vars,
 	}
 	v.RequestBindName = strings.ReplaceAll(camelCaseVars(v.Request), ".", "")
+	v.RequestBindOriginName = v.RequestBindName
+	if v.Num != 0 {
+		v.RequestBindName += strconv.Itoa(v.Num)
+	}
+	if m.Input.Desc.FullName() == "google.protobuf.Empty" {
+		v.RequestBindHide = true
+	}
+
 	return &v
 }
 
@@ -431,16 +452,6 @@ func buildPathVars(path string) (res map[string]*string) {
 					res[varName] = &v
 					continue
 				}
-				// 变量第一条数据必须是英文字符
-				if varName == "" {
-					// varName += varName
-					// continue
-					// if (s >= "a" && s <= "z") || (s >= "A" && s <= "Z") {
-					// 	varName += varName
-					// 	continue
-					// }
-					// fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: Path %s should not end with \"a-zA-Z\" \n", path)
-				}
 				varName += s
 				continue
 			}
@@ -455,16 +466,5 @@ func buildPathVars(path string) (res map[string]*string) {
 			res[varName] = &v
 		}
 	}
-
-	// pattern := regexp.MustCompile(`(?i){([a-z\.0-9_\s]*)=?([^{}]*)}`)
-	// matches := pattern.FindAllStringSubmatch(path, -1)
-	// for _, m := range matches {
-	// 	name := strings.TrimSpace(m[1])
-	// 	if len(name) > 1 && len(m[2]) > 0 {
-	// 		res[name] = &m[2]
-	// 	} else {
-	// 		res[name] = nil
-	// 	}
-	// }
 	return
 }
