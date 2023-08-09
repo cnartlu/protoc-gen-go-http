@@ -1,4 +1,4 @@
-package main
+package gin
 
 var ginTemplate = `
 {{$svrType := .ServiceType}}

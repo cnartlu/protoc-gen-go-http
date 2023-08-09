@@ -3,8 +3,11 @@ package main
 import (
 	"flag"
 
+	"github.com/cnartlu/protoc-gen-go-http/genhttp"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/types/pluginpb"
+
+	_ "github.com/cnartlu/protoc-gen-go-http/genhttp/frames/echo"
 )
 
 var (
@@ -23,7 +26,14 @@ func main() {
 			if !f.Generate {
 				continue
 			}
-			generateRouterFile(gen, f, *omitempty, *frame)
+
+			genhttp.New().
+				SetFile(f).
+				SetFrame(*frame).
+				SetOmitempty(*omitempty).
+				SetPlugin(gen).
+				SetVersion(version).
+				Generate()
 		}
 		return nil
 	})

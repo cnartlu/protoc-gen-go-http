@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package test;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/cnartlu/protoc-gen-go-http/test;test";
+option java_multiple_files = true;
+option java_package = "test";
+
+service Test {
+	rpc List (ListTestRequest) returns (ListTestReply) {
+		option (google.api.http) = {
+			get: "/account/{id}/{dd.pp.c_asa_2c_3}/{kk}/aa{*}",
+			additional_bindings: {
+				post: "/as/a/:{id}"
+			}
+		};
+	};
+	rpc Get (GetTestRequest) returns (GetTestReply) {
+		option (google.api.http) = {
+            get: "/account/:id",
+        };
+	};
+	rpc Create (CreateTestRequest) returns (CreateTestReply) {
+		option (google.api.http) = {
+            post: "/account",
+			body: "*"
+        };
+	};
+	rpc Update (UpdateTestRequest) returns (UpdateTestReply) {
+		option (google.api.http) = {
+            put: "/account/:id",
+			body: "*"
+        };
+	};
+	rpc Delete (DeleteTestRequest) returns (google.protobuf.Empty) {
+		option (google.api.http) = {
+            delete: "/account",
+        };
+	};
+}
+
+message CreateTestRequest {
+	string name = 1;
+	string ca_name = 2;
+	repeated string emails = 3;
+}
+message CreateTestReply {
+	uint64 id = 1;
+}
+
+message UpdateTestRequest {
+	uint64 id = 1;
+	optional string name = 2;
+	repeated string emails = 3;
+}
+message UpdateTestReply {
+	uint64 id = 1;
+	string name = 2;
+	repeated string emails = 3;
+}
+
+message DeleteTestRequest {
+	uint64 id = 1;
+}
+
+message GetTestRequest {
+	uint64 id = 1;
+}
+message GetTestReply {
+	uint64 id = 1 ;
+	string name = 2;
+	repeated string emails = 3;
+	int64 create_time = 4;
+	int64 update_time = 5;
+}
+
+message ListTestRequest {
+	string kw = 1;
+	int64 page = 2;
+	int64 page_size = 3;
+	message a {
+		string b = 1;
+	}
+	a id = 4;
+}
+message ListTestReply {
+	message Item {
+		uint64 id = 1;
+		string name = 2;
+		repeated string emails = 3;
+		int64 create_time = 4;
+		int64 update_time = 5;
+	}
+	repeated Item items = 1;
+}
