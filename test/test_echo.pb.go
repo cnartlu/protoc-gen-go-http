@@ -15,60 +15,60 @@ import (
 	strings "strings"
 )
 
-// TestHttpServer is the server API for Test service.
-// All implementations must embed UnimplementedTestHttpServer
+// TestEchoServer is the server API for Test service.
+// All implementations must embed UnimplementedTestEchoServer
 // for forward compatibility
-type TestHttpServer interface {
+type TestEchoServer interface {
 	List(ctx context.Context, req *ListTestRequest) (*ListTestReply, error)
 	Get(ctx context.Context, req *GetTestRequest) (*GetTestReply, error)
 	Create(ctx context.Context, req *CreateTestRequest) (*CreateTestReply, error)
 	Update(ctx context.Context, req *UpdateTestRequest) (*UpdateTestReply, error)
 	Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error)
-	mustEmbedUnimplementedTestHttpServer()
+	mustEmbedUnimplementedTestEchoServer()
 }
 
-// UnimplementedTestHttpServer must be embedded to have forward compatible implementations.
-type UnimplementedTestHttpServer struct {
+// UnimplementedTestEchoServer must be embedded to have forward compatible implementations.
+type UnimplementedTestEchoServer struct {
 }
 
-func (UnimplementedTestHttpServer) Update(ctx context.Context, req *UpdateTestRequest) (*UpdateTestReply, error) {
+func (UnimplementedTestEchoServer) Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error) {
 	return nil, v4.ErrNotImplemented
 }
-func (UnimplementedTestHttpServer) Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error) {
+func (UnimplementedTestEchoServer) List(ctx context.Context, req *ListTestRequest) (*ListTestReply, error) {
 	return nil, v4.ErrNotImplemented
 }
-func (UnimplementedTestHttpServer) List(ctx context.Context, req *ListTestRequest) (*ListTestReply, error) {
+func (UnimplementedTestEchoServer) Get(ctx context.Context, req *GetTestRequest) (*GetTestReply, error) {
 	return nil, v4.ErrNotImplemented
 }
-func (UnimplementedTestHttpServer) Get(ctx context.Context, req *GetTestRequest) (*GetTestReply, error) {
+func (UnimplementedTestEchoServer) Create(ctx context.Context, req *CreateTestRequest) (*CreateTestReply, error) {
 	return nil, v4.ErrNotImplemented
 }
-func (UnimplementedTestHttpServer) Create(ctx context.Context, req *CreateTestRequest) (*CreateTestReply, error) {
+func (UnimplementedTestEchoServer) Update(ctx context.Context, req *UpdateTestRequest) (*UpdateTestReply, error) {
 	return nil, v4.ErrNotImplemented
 }
-func (UnimplementedTestHttpServer) mustEmbedUnimplementedTestHttpServer() {}
+func (UnimplementedTestEchoServer) mustEmbedUnimplementedTestEchoServer() {}
 
-// UnsafeTestHttpServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to TestHttpServer will
+// UnsafeTestEchoServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to TestEchoServer will
 // result in compilation errors.
-type UnsafeTestHttpServer interface {
-	mustEmbedUnimplementedTestHttpServer()
+type UnsafeTestEchoServer interface {
+	mustEmbedUnimplementedTestEchoServer()
 }
 
 type TestHttpRouter interface {
 	Add(method, path string, handler v4.HandlerFunc, middleware ...v4.MiddlewareFunc) *v4.Route
 }
 
-func RegisterTestHttpServer(r TestHttpRouter, srv TestHttpServer) {
-	r.Add("GET", "/account/:id/:c_asa_2c_3/:kk/aa:*", _Test_List0_HTTP_Handler(srv))
-	r.Add("POST", "/as/a/::id", _Test_List1_HTTP_Handler(srv))
-	r.Add("GET", "/account/:id", _Test_Get0_HTTP_Handler(srv))
-	r.Add("POST", "/account", _Test_Create0_HTTP_Handler(srv))
-	r.Add("PUT", "/account/:id", _Test_Update0_HTTP_Handler(srv))
-	r.Add("DELETE", "/account", _Test_Delete0_HTTP_Handler(srv))
+func RegisterTestEchoServer(r TestHttpRouter, srv TestEchoServer) {
+	r.Add("GET", "/account/:id/:c_asa_2c_3/:kk/aa:*", _Test_List0_Echo_Handler(srv))
+	r.Add("POST", "/as/a/::id", _Test_List1_Echo_Handler(srv))
+	r.Add("GET", "/account/:id", _Test_Get0_Echo_Handler(srv))
+	r.Add("POST", "/account", _Test_Create0_Echo_Handler(srv))
+	r.Add("PUT", "/account/:id", _Test_Update0_Echo_Handler(srv))
+	r.Add("DELETE", "/account", _Test_Delete0_Echo_Handler(srv))
 }
 
-func _Test_List0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
+func _Test_List0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 	return func(c v4.Context) error {
 		req := new(ListTestRequest)
 		if err := c.Bind(req); err != nil {
@@ -83,22 +83,11 @@ func _Test_List0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		accept := strings.ToLower(c.Request().Header.Get("Accept"))
-		switch {
-		case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
-			bs, _ := proto.Marshal(res)
-			return c.Blob(http.StatusOK, "application/x-protobuf", bs)
-		case accept == "*/*" || strings.Contains(accept, "application/json"):
-			return c.JSON(http.StatusOK, res)
-		case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
-			return c.XML(http.StatusOK, res)
-		default:
-			return c.JSON(http.StatusOK, res)
-		}
+		return _Output_Echo_Test(c, res)
 	}
 }
 
-func _Test_List1_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
+func _Test_List1_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 	return func(c v4.Context) error {
 		req := new(ListTestRequest)
 		if err := c.Bind(req); err != nil {
@@ -113,22 +102,11 @@ func _Test_List1_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		accept := strings.ToLower(c.Request().Header.Get("Accept"))
-		switch {
-		case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
-			bs, _ := proto.Marshal(res)
-			return c.Blob(http.StatusOK, "application/x-protobuf", bs)
-		case accept == "*/*" || strings.Contains(accept, "application/json"):
-			return c.JSON(http.StatusOK, res)
-		case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
-			return c.XML(http.StatusOK, res)
-		default:
-			return c.JSON(http.StatusOK, res)
-		}
+		return _Output_Echo_Test(c, res)
 	}
 }
 
-func _Test_Get0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
+func _Test_Get0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 	return func(c v4.Context) error {
 		req := new(GetTestRequest)
 		if err := c.Bind(req); err != nil {
@@ -143,22 +121,11 @@ func _Test_Get0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		accept := strings.ToLower(c.Request().Header.Get("Accept"))
-		switch {
-		case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
-			bs, _ := proto.Marshal(res)
-			return c.Blob(http.StatusOK, "application/x-protobuf", bs)
-		case accept == "*/*" || strings.Contains(accept, "application/json"):
-			return c.JSON(http.StatusOK, res)
-		case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
-			return c.XML(http.StatusOK, res)
-		default:
-			return c.JSON(http.StatusOK, res)
-		}
+		return _Output_Echo_Test(c, res)
 	}
 }
 
-func _Test_Create0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
+func _Test_Create0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 	return func(c v4.Context) error {
 		req := new(CreateTestRequest)
 		if err := c.Bind(req); err != nil {
@@ -173,22 +140,11 @@ func _Test_Create0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		accept := strings.ToLower(c.Request().Header.Get("Accept"))
-		switch {
-		case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
-			bs, _ := proto.Marshal(res)
-			return c.Blob(http.StatusOK, "application/x-protobuf", bs)
-		case accept == "*/*" || strings.Contains(accept, "application/json"):
-			return c.JSON(http.StatusOK, res)
-		case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
-			return c.XML(http.StatusOK, res)
-		default:
-			return c.JSON(http.StatusOK, res)
-		}
+		return _Output_Echo_Test(c, res)
 	}
 }
 
-func _Test_Update0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
+func _Test_Update0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 	return func(c v4.Context) error {
 		req := new(UpdateTestRequest)
 		if err := c.Bind(req); err != nil {
@@ -203,22 +159,11 @@ func _Test_Update0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		accept := strings.ToLower(c.Request().Header.Get("Accept"))
-		switch {
-		case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
-			bs, _ := proto.Marshal(res)
-			return c.Blob(http.StatusOK, "application/x-protobuf", bs)
-		case accept == "*/*" || strings.Contains(accept, "application/json"):
-			return c.JSON(http.StatusOK, res)
-		case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
-			return c.XML(http.StatusOK, res)
-		default:
-			return c.JSON(http.StatusOK, res)
-		}
+		return _Output_Echo_Test(c, res)
 	}
 }
 
-func _Test_Delete0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
+func _Test_Delete0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 	return func(c v4.Context) error {
 		req := new(DeleteTestRequest)
 		if err := c.Bind(req); err != nil {
@@ -233,17 +178,21 @@ func _Test_Delete0_HTTP_Handler(srv TestHttpServer) v4.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		accept := strings.ToLower(c.Request().Header.Get("Accept"))
-		switch {
-		case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
-			bs, _ := proto.Marshal(res)
-			return c.Blob(http.StatusOK, "application/x-protobuf", bs)
-		case accept == "*/*" || strings.Contains(accept, "application/json"):
-			return c.JSON(http.StatusOK, res)
-		case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
-			return c.XML(http.StatusOK, res)
-		default:
-			return c.JSON(http.StatusOK, res)
-		}
+		return _Output_Echo_Test(c, res)
+	}
+}
+
+func _Output_Echo_Test(c v4.Context, res any) error {
+	accept := strings.ToLower(c.Request().Header.Get("Accept"))
+	switch {
+	case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
+		bs, _ := proto.Marshal(res.(proto.Message))
+		return c.Blob(http.StatusOK, "application/x-protobuf", bs)
+	case accept == "*/*" || strings.Contains(accept, "application/json"):
+		return c.JSON(http.StatusOK, res)
+	case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
+		return c.XML(http.StatusOK, res)
+	default:
+		return c.JSON(http.StatusOK, res)
 	}
 }

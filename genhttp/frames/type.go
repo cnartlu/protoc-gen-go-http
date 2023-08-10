@@ -1,4 +1,4 @@
-package echo
+package frames
 
 import (
 	"fmt"
@@ -11,7 +11,14 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-type methodDesc struct {
+func _replaceVarName(param camel.Param, varName string) string {
+	if param.IsWild {
+		return "*" + varName
+	}
+	return ":" + varName
+}
+
+type MethodDesc struct {
 	*protogen.Method
 	// Num方法格式
 	Num int
@@ -27,14 +34,17 @@ type methodDesc struct {
 	Body string
 	// 选择器的其他HTTP绑定。嵌套绑定本身不能包含“additional_bindings”字段（即嵌套只能有一层深度）。
 	ResponseBody string
+
+	// replaceVarName 替换的变量名称
+	replaceVarName func(param camel.Param, varName string) string
 }
 
-func (m methodDesc) AddNum(i int) methodDesc {
+func (m MethodDesc) AddNum(i int) MethodDesc {
 	m.Num += 1
 	return m
 }
 
-func (m *methodDesc) genParams() {
+func (m *MethodDesc) genParams() {
 	m.Pnames = camel.ParsePath(m.Path)
 	if len(m.Pnames) < 1 {
 		return
@@ -46,13 +56,7 @@ func (m *methodDesc) genParams() {
 		if i := strings.LastIndex(param.Name, "."); i > 0 {
 			afterStr = param.Name[i+1:]
 		}
-		// 参数绑定值
-		if param.IsWild {
-			// TODO 参数绑定 尚未完善
-			m.Path = strings.Replace(m.Path, "{"+param.Name+"}", "*", 1)
-		} else {
-			m.Path = strings.Replace(m.Path, "{"+param.Name+"}", ":"+afterStr, 1)
-		}
+		m.Path = strings.Replace(m.Path, "{"+param.Name+"}", m.replaceVarName(param, afterStr), 1)
 		descriptor := camel.FieldsBindDescriptor(param.Name, m.Desc.Input())
 		if descriptor == nil {
 			// fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: The field [%s] in path:'%s' not found in [%s].\n", param, oldPath, m.Input.Desc.FullName())
@@ -62,8 +66,11 @@ func (m *methodDesc) genParams() {
 	}
 }
 
-func NewMethodDesc(m *protogen.Method, rule *annotations.HttpRule) methodDesc {
-	md := methodDesc{Method: m}
+func NewMethodDesc(m *protogen.Method, rule *annotations.HttpRule) MethodDesc {
+	md := MethodDesc{
+		Method:         m,
+		replaceVarName: _replaceVarName,
+	}
 	if rule == nil {
 		service := m.Parent
 		path := fmt.Sprintf("/%s/%s", service.Desc.FullName(), m.Desc.Name())

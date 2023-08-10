@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 
 	_ "github.com/cnartlu/protoc-gen-go-http/genhttp/frames/echo"
+	_ "github.com/cnartlu/protoc-gen-go-http/genhttp/frames/gin"
 )
 
 var (
@@ -26,8 +27,7 @@ func main() {
 			if !f.Generate {
 				continue
 			}
-
-			genhttp.New().
+			return genhttp.New().
 				SetFile(f).
 				SetFrame(*frame).
 				SetOmitempty(*omitempty).

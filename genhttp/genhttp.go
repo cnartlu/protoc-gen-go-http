@@ -127,8 +127,7 @@ func (c *gen) Generate() error {
 	}
 	fileRouter := c.file.GeneratedFilenamePrefix + "_" + c._frame + ".pb.go"
 	c.g = c.plugin.NewGeneratedFile(fileRouter, c.file.GoImportPath)
-	c.generateFile()
-	return nil
+	return c.generateFile()
 }
 
 func New() *gen {
