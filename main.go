@@ -27,13 +27,15 @@ func main() {
 			if !f.Generate {
 				continue
 			}
-			return genhttp.New().
+			if err := genhttp.New().
 				SetFile(f).
 				SetFrame(*frame).
 				SetOmitempty(*omitempty).
 				SetPlugin(gen).
 				SetVersion(version).
-				Generate()
+				Generate(); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
