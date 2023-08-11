@@ -21,26 +21,32 @@ func (e) Name() string {
 
 func (e) Generate(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile, service *protogen.Service, omitempty bool) error {
 	methods := make([]frames.MethodDesc, 0, len(service.Methods))
-	methodMap := map[string]*protogen.Method{}
-	for idx := range service.Methods {
-		m := service.Methods[idx]
-		if m.Desc.IsStreamingClient() || m.Desc.IsStreamingServer() {
-			continue
-		}
-		rule, ok := proto.GetExtension(m.Desc.Options(), annotations.E_Http).(*annotations.HttpRule)
-		if ok {
-			methods = append(methods, frames.NewMethodDesc(m, rule))
-			if rule != nil {
-				for idx, rule := range rule.AdditionalBindings {
-					methods = append(methods, frames.NewMethodDesc(m, rule).AddNum(idx+1))
-				}
+	protogenMethods := make([]*protogen.Method, 0, len(service.Methods))
+	{
+		methodMap := map[string]struct{}{}
+		for idx := range service.Methods {
+			m := service.Methods[idx]
+			if m.Desc.IsStreamingClient() || m.Desc.IsStreamingServer() {
+				continue
 			}
-		} else if !omitempty {
-			methods = append(methods, frames.NewMethodDesc(m, nil))
+			rule, ok := proto.GetExtension(m.Desc.Options(), annotations.E_Http).(*annotations.HttpRule)
+			if ok {
+				methods = append(methods, frames.NewMethodDesc(m, rule))
+				if rule != nil {
+					for idx, rule := range rule.AdditionalBindings {
+						methods = append(methods, frames.NewMethodDesc(m, rule).AddNum(idx+1))
+					}
+				}
+			} else if !omitempty {
+				methods = append(methods, frames.NewMethodDesc(m, nil))
+			}
+			if _, ok := methodMap[string(m.Desc.FullName())]; !ok {
+				protogenMethods = append(protogenMethods, m)
+			}
+			methodMap[string(m.Desc.FullName())] = struct{}{}
 		}
-		methodMap[string(m.Desc.FullName())] = m
 	}
-	if len(methodMap) < 1 {
+	if len(protogenMethods) < 1 {
 		return nil
 	}
 
@@ -55,7 +61,7 @@ func (e) Generate(gen *protogen.Plugin, file *protogen.File, g *protogen.Generat
 	g.P("// All implementations must embed Unimplemented", service.GoName, "EchoServer")
 	g.P("// for forward compatibility")
 	g.P("type ", service.GoName, "EchoServer interface {")
-	for _, m := range methodMap {
+	for _, m := range protogenMethods {
 		g.P(m.GoName, "(ctx context.Context, req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error)")
 	}
 	g.P("mustEmbedUnimplemented", service.GoName, "EchoServer()")
@@ -67,7 +73,7 @@ func (e) Generate(gen *protogen.Plugin, file *protogen.File, g *protogen.Generat
 		g.P("type Unimplemented", service.GoName, "EchoServer struct {")
 	}
 	g.P("}")
-	for _, m := range methodMap {
+	for _, m := range protogenMethods {
 		g.P("func (Unimplemented", service.GoName, "EchoServer) ", m.GoName, "(ctx context.Context, req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error) {")
 		{
 			g.P("return nil, v4.ErrNotImplemented")

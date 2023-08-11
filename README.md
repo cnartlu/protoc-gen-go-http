@@ -15,4 +15,7 @@ protoc --proto_path=. --proto_path=./third_party --go_out=paths=source_relative:
 
 ---
 # 参数
-frame 框架 echo or gin
+frame 框架
+echo    已支持
+gin     已支持
+fiber   待支持 https://docs.gofiber.io/

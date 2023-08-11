@@ -12,7 +12,7 @@ option java_package = "test";
 service Test {
 	rpc List (ListTestRequest) returns (ListTestReply) {
 		option (google.api.http) = {
-			get: "/account/{id}/{dd.pp.c_asa_2c_3}/{kk}/aa{*}",
+			get: "/account/{id}/{dd.pp.c_asa_2c_3}/{kk}/{aa=**}",
 			additional_bindings: {
 				post: "/as/a/:{id}"
 			}

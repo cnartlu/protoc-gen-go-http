@@ -7,8 +7,9 @@ import (
 )
 
 type Param struct {
-	Name   string
-	IsWild bool
+	Name      string
+	IsWild    bool
+	OrignName string
 }
 
 // Parse 解析参数
@@ -36,13 +37,18 @@ func ParsePath(path string) []Param {
 		}
 		if pname != "" {
 			p := Param{
-				Name: pname,
+				Name:      pname,
+				OrignName: pname,
 			}
-			// 结构数据解析 参数名=*|**
+			// 结构数据解析 参数名 = *|**|
 			vs := strings.Split(pname, "=")
-			if len(vs) == 2 && vs[1] == "**" {
-				p.Name = vs[0]
-				p.IsWild = true
+			if len(vs) == 2 {
+				if vs[1] == "*" || vs[1] == "" {
+					p.Name = vs[0]
+				} else if strings.Trim(strings.TrimSpace(vs[1]), "*") == "" {
+					p.Name = vs[0]
+					p.IsWild = true
+				}
 			}
 			pnames = append(pnames, p)
 		}

@@ -56,7 +56,7 @@ func (m *MethodDesc) genParams() {
 		if i := strings.LastIndex(param.Name, "."); i > 0 {
 			afterStr = param.Name[i+1:]
 		}
-		m.Path = strings.Replace(m.Path, "{"+param.Name+"}", m.replaceVarName(param, afterStr), 1)
+		m.Path = strings.Replace(m.Path, "{"+param.OrignName+"}", m.replaceVarName(param, afterStr), 1)
 		descriptor := camel.FieldsBindDescriptor(param.Name, m.Desc.Input())
 		if descriptor == nil {
 			// fmt.Fprintf(os.Stderr, "\u001B[31mWARN\u001B[m: The field [%s] in path:'%s' not found in [%s].\n", param, oldPath, m.Input.Desc.FullName())

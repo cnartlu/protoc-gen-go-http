@@ -31,9 +31,6 @@ type TestEchoServer interface {
 type UnimplementedTestEchoServer struct {
 }
 
-func (UnimplementedTestEchoServer) Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error) {
-	return nil, v4.ErrNotImplemented
-}
 func (UnimplementedTestEchoServer) List(ctx context.Context, req *ListTestRequest) (*ListTestReply, error) {
 	return nil, v4.ErrNotImplemented
 }
@@ -44,6 +41,9 @@ func (UnimplementedTestEchoServer) Create(ctx context.Context, req *CreateTestRe
 	return nil, v4.ErrNotImplemented
 }
 func (UnimplementedTestEchoServer) Update(ctx context.Context, req *UpdateTestRequest) (*UpdateTestReply, error) {
+	return nil, v4.ErrNotImplemented
+}
+func (UnimplementedTestEchoServer) Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error) {
 	return nil, v4.ErrNotImplemented
 }
 func (UnimplementedTestEchoServer) mustEmbedUnimplementedTestEchoServer() {}
