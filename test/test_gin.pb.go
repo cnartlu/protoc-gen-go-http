@@ -16,9 +16,118 @@ import (
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	io "io"
 	http "net/http"
-	strings "strings"
 	_ "unsafe"
 )
+
+// defaultMemory default maximum parsing memory
+const defaultMemory = 32 << 20
+
+//go:linkname validate github.com/gin-gonic/gin/binding.validate
+func validate(obj any) error
+
+//go:linkname mappingByPtr github.com/gin-gonic/gin/binding.mappingByPtr
+func mappingByPtr(ptr any, setter any, tag string) error
+
+// RequestGinHandler customize the binding function, the binding method can be determined by binding parameter type and context
+type RequestGinHandler func(c *gin.Context, req proto.Message) error
+
+// ResponseGinHandler Custom response function, output response
+type ResponseGinHandler func(c *gin.Context, res proto.Message)
+
+var (
+	BindGinTagName string = "json"
+	// _RequestGinHandler binding handler
+	_RequestGinHandler RequestGinHandler = func(c *gin.Context, req proto.Message) error {
+		switch c.ContentType() {
+		case binding.MIMEMultipartPOSTForm:
+			if err := c.Request.ParseMultipartForm(defaultMemory); err != nil {
+				return err
+			}
+			if err := mappingByPtr(req, c.Request, BindGinTagName); err != nil {
+				return err
+			}
+		case binding.MIMEPOSTForm:
+			if err := c.Request.ParseForm(); err != nil {
+				return err
+			}
+			if err := c.Request.ParseMultipartForm(defaultMemory); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+				return err
+			}
+			return binding.MapFormWithTag(req, c.Request.Form, BindGinTagName)
+		default:
+			bs, _ := io.ReadAll(c.Request.Body)
+			if len(bs) < 1 {
+				return nil
+			}
+			return (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(bs, req)
+		}
+		return nil
+	}
+	// _OutGinResponseHandler output response handler
+	_OutGinResponseHandler ResponseGinHandler = func(c *gin.Context, res proto.Message) {
+		for _, accept := range c.Accepted {
+			switch accept {
+			case "application/json":
+				c.JSON(http.StatusOK, res)
+				return
+			case "application/xml", "text/xml":
+				c.XML(http.StatusOK, res)
+				return
+			case "application/x-protobuf", "application/protobuf":
+				c.ProtoBuf(http.StatusOK, res)
+				return
+			default:
+			}
+		}
+		c.JSON(http.StatusOK, res)
+	}
+)
+
+// SetRequestGinHandler set binding handler
+func SetRequestGinHandler(v RequestGinHandler) {
+	_RequestGinHandler = v
+}
+
+// SetOutGinResponseHandler set output response handler
+func SetOutGinResponseHandler(v ResponseGinHandler) {
+	_OutGinResponseHandler = v
+}
+
+func _Bind_Gin_Params(c *gin.Context, req proto.Message) error {
+	m := make(map[string][]string)
+	for _, v := range c.Params {
+		m[v.Key] = []string{v.Value}
+	}
+	return binding.MapFormWithTag(req, m, BindGinTagName)
+}
+
+// _Must_Bind_Gin_Params must bind params
+func _Must_Bind_Gin_Params(c *gin.Context, req proto.Message) error {
+	if err := _Bind_Gin_Params(c, req); err != nil {
+		c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+		return err
+	}
+	return nil
+}
+
+func _Bind_Gin_Query(c *gin.Context, req proto.Message) error {
+	query := c.Request.URL.Query()
+	for _, v := range c.Params {
+		if query.Get(v.Key) == "" {
+			query.Set(v.Key, v.Value)
+		}
+	}
+	return binding.MapFormWithTag(req, query, BindGinTagName)
+}
+
+// _Must_Bind_Gin_Query must bind query
+func _Must_Bind_Gin_Query(c *gin.Context, req proto.Message) error {
+	if err := _Bind_Gin_Query(c, req); err != nil {
+		c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+		return err
+	}
+	return nil
+}
 
 // TestGinServer is the server API for Test service.
 // All implementations must embed UnimplementedTestGinServer
@@ -33,8 +142,7 @@ type TestGinServer interface {
 }
 
 // UnimplementedTestGinServer must be embedded to have forward compatible implementations.
-type UnimplementedTestGinServer struct {
-}
+type UnimplementedTestGinServer struct{}
 
 func (UnimplementedTestGinServer) List(ctx context.Context, req *ListTestRequest) (*ListTestReply, error) {
 	return nil, gin.Error{Type: gin.ErrorTypePublic, Err: errors.New(http.StatusText(http.StatusNotImplemented))}
@@ -60,55 +168,6 @@ type UnsafeTestGinServer interface {
 	mustEmbedUnimplementedTestGinServer()
 }
 
-const defaultMemory_74657374d41d8cd98f00b204e9800998ecf8427e = 32 << 20
-
-//go:linkname validate_74657374d41d8cd98f00b204e9800998ecf8427e github.com/gin-gonic/gin/binding.validate
-func validate_74657374d41d8cd98f00b204e9800998ecf8427e(obj any) error
-
-//go:linkname mappingByPtr_74657374d41d8cd98f00b204e9800998ecf8427e github.com/gin-gonic/gin/binding.mappingByPtr
-func mappingByPtr_74657374d41d8cd98f00b204e9800998ecf8427e(ptr any, setter any, tag string) error
-
-func _Bind_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c *gin.Context, req proto.Message) error {
-	switch c.ContentType() {
-	case binding.MIMEMultipartPOSTForm:
-		if err := c.Request.ParseMultipartForm(defaultMemory_74657374d41d8cd98f00b204e9800998ecf8427e); err != nil {
-			return err
-		}
-		if err := mappingByPtr_74657374d41d8cd98f00b204e9800998ecf8427e(req, c.Request, "json"); err != nil {
-			return err
-		}
-	case binding.MIMEPOSTForm:
-		if err := c.Request.ParseForm(); err != nil {
-			return err
-		}
-		if err := c.Request.ParseMultipartForm(defaultMemory_74657374d41d8cd98f00b204e9800998ecf8427e); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-			return err
-		}
-		return binding.MapFormWithTag(req, c.Request.Form, "json")
-	default:
-		bs, _ := io.ReadAll(c.Request.Body)
-		if len(bs) < 1 {
-			return nil
-		}
-		return (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(bs, req)
-	}
-	return nil
-}
-
-func _Output_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c *gin.Context, res any) {
-	accept := strings.ToLower(c.GetHeader("Accept"))
-	switch {
-	case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
-		c.ProtoBuf(http.StatusOK, res)
-	case accept == "*/*" || strings.Contains(accept, "application/json"):
-		c.JSON(http.StatusOK, res)
-	case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
-		c.XML(http.StatusOK, res)
-	default:
-		c.JSON(http.StatusOK, res)
-	}
-}
-
 type TestGinRouter = gin.IRoutes
 
 func RegisterTestGinServer(r TestGinRouter, srv TestGinServer) {
@@ -123,157 +182,128 @@ func RegisterTestGinServer(r TestGinRouter, srv TestGinServer) {
 func _Test_List0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(ListTestRequest)
-		// param bind and validate
-		// bind http.Request query
-		query := c.Request.URL.Query()
-		for _, v := range c.Params {
-			if query.Get(v.Key) == "" {
-				query.Set(v.Key, v.Value)
-			}
-			query[v.Key] = []string{v.Value}
+		if err := _Must_Bind_Gin_Params(c, req); err != nil {
+			return
 		}
-		if err := binding.MapFormWithTag(req, query, "json"); err != nil {
+		if err := _Must_Bind_Gin_Query(c, req); err != nil {
+			return
+		}
+		if err := validate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate_74657374d41d8cd98f00b204e9800998ecf8427e(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
-			return
-		}
-		// response body
 		res, err := srv.List(c, req)
 		if err != nil {
 			c.Abort()
 			c.Error(err)
 			return
 		}
-		_Output_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, res)
+		_OutGinResponseHandler(c, res)
 	}
 }
 
 func _Test_List1_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(ListTestRequest)
-		// param bind and validate
-		// bind http.Request path params
-		{
-			m := make(map[string][]string)
-			for _, v := range c.Params {
-				m[v.Key] = []string{v.Value}
-			}
-			_ = binding.MapFormWithTag(req, m, "json")
+		if err := _Must_Bind_Gin_Params(c, req); err != nil {
+			return
 		}
-		if err := _Bind_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, req); err != nil {
+		if err := _RequestGinHandler(c, req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate_74657374d41d8cd98f00b204e9800998ecf8427e(req); err != nil {
+		if err := validate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		// response body
 		res, err := srv.List(c, req)
 		if err != nil {
 			c.Abort()
 			c.Error(err)
 			return
 		}
-		_Output_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, res)
+		_OutGinResponseHandler(c, res)
 	}
 }
 
 func _Test_Get0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(GetTestRequest)
-		// param bind and validate
-		// bind http.Request query
-		query := c.Request.URL.Query()
-		if err := binding.MapFormWithTag(req, query, "json"); err != nil {
+		if err := _Must_Bind_Gin_Query(c, req); err != nil {
+			return
+		}
+		if err := validate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate_74657374d41d8cd98f00b204e9800998ecf8427e(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
-			return
-		}
-		// response body
 		res, err := srv.Get(c, req)
 		if err != nil {
 			c.Abort()
 			c.Error(err)
 			return
 		}
-		_Output_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, res)
+		_OutGinResponseHandler(c, res)
 	}
 }
 
 func _Test_Create0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(CreateTestRequest)
-		// param bind and validate
-		if err := _Bind_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, req); err != nil {
+		if err := _RequestGinHandler(c, req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate_74657374d41d8cd98f00b204e9800998ecf8427e(req); err != nil {
+		if err := validate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		// response body
 		res, err := srv.Create(c, req)
 		if err != nil {
 			c.Abort()
 			c.Error(err)
 			return
 		}
-		_Output_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, res)
+		_OutGinResponseHandler(c, res)
 	}
 }
 
 func _Test_Update0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(UpdateTestRequest)
-		// param bind and validate
-		if err := _Bind_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, req); err != nil {
+		if err := _RequestGinHandler(c, req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate_74657374d41d8cd98f00b204e9800998ecf8427e(req); err != nil {
+		if err := validate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		// response body
 		res, err := srv.Update(c, req)
 		if err != nil {
 			c.Abort()
 			c.Error(err)
 			return
 		}
-		_Output_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, res)
+		_OutGinResponseHandler(c, res)
 	}
 }
 
 func _Test_Delete0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(DeleteTestRequest)
-		// param bind and validate
-		// bind http.Request query
-		query := c.Request.URL.Query()
-		if err := binding.MapFormWithTag(req, query, "json"); err != nil {
+		if err := _Must_Bind_Gin_Query(c, req); err != nil {
+			return
+		}
+		if err := validate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate_74657374d41d8cd98f00b204e9800998ecf8427e(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
-			return
-		}
-		// response body
 		res, err := srv.Delete(c, req)
 		if err != nil {
 			c.Abort()
 			c.Error(err)
 			return
 		}
-		_Output_Gin_74657374d41d8cd98f00b204e9800998ecf8427e(c, res)
+		_OutGinResponseHandler(c, res)
 	}
 }

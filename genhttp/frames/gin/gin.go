@@ -1,12 +1,9 @@
 package gin
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"strconv"
 
 	"github.com/cnartlu/protoc-gen-go-http/genhttp/frames"
 	"google.golang.org/genproto/googleapis/api/annotations"
@@ -25,15 +22,20 @@ func (g) Name() string {
 }
 
 var (
-	bindingIdent     = protogen.GoImportPath("github.com/gin-gonic/gin/binding").Ident("")
-	bindingJsonIdent = protogen.GoImportPath("google.golang.org/protobuf/encoding/protojson").Ident("")
-	protoIdent       = protogen.GoImportPath("google.golang.org/protobuf/proto").Ident("")
+	importBinding   = protogen.GoImportPath("github.com/gin-gonic/gin/binding")
+	importProtoJson = protogen.GoImportPath("google.golang.org/protobuf/encoding/protojson")
+	importProto     = protogen.GoImportPath("google.golang.org/protobuf/proto")
+	importNetHttp   = protogen.GoImportPath("net/http")
+	importGin       = protogen.GoImportPath("github.com/gin-gonic/gin")
+	importErrors    = protogen.GoImportPath("errors")
+	importContext   = protogen.GoImportPath("context")
+	importUnsafe    = protogen.GoImportPath("unsafe")
+	importIo        = protogen.GoImportPath("io")
 )
 
 var (
-	uniqueFileNames = map[string]string{}
-	// unique file implementation
-	uniqueFiles = map[string]struct{}{}
+	// unique func implementation
+	uniqueFuncs = map[string]struct{}{}
 )
 
 func (g) Generate(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile, service *protogen.Service, omitempty bool) error {
@@ -67,46 +69,191 @@ func (g) Generate(gen *protogen.Plugin, file *protogen.File, g *protogen.Generat
 		return nil
 	}
 
-	// Create .s assembly file, linkname skips build check
+	createUniquefunc(gen, file, g)
+	generateUnimplemented(g, service, protogenMethods)
+	generateRouterMethods(g, service, methods)
+	generateHandlerMethods(g, service, methods)
+	return nil
+}
 
-	fullname := string(file.Desc.FullName())
-	uniqueFileNames[fullname] = hex.EncodeToString(md5.New().Sum([]byte(fullname)))
+// createUniquefunc package unique func
+func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile) {
+	if _, ok := uniqueFuncs[string(file.GoImportPath)]; ok {
+		return
+	}
+	uniqueFuncs[string(file.GoImportPath)] = struct{}{}
 
-	createUniqueFile(gen, file)
+	g.QualifiedGoIdent(importBinding.Ident(""))
+	g.QualifiedGoIdent(importIo.Ident(""))
+	g.QualifiedGoIdent(importProtoJson.Ident(""))
+	g.Import(importUnsafe)
 
-	g.QualifiedGoIdent(protogen.GoImportPath("net/http").Ident(""))
-	g.QualifiedGoIdent(protogen.GoImportPath("context").Ident(""))
-	g.QualifiedGoIdent(protogen.GoImportPath("strings").Ident(""))
-	g.QualifiedGoIdent(protogen.GoImportPath("errors").Ident(""))
-	g.QualifiedGoIdent(protogen.GoImportPath("github.com/gin-gonic/gin").Ident(""))
+	// Add an assembly file with the suffix name s(.s) to ensure that the go build command is executable,
+	// for details https://pkg.go.dev/cmd/compile
+	fileRouter := filepath.Dir(file.GeneratedFilenamePrefix) + "/" + filepath.Base(file.GeneratedFilenamePrefix) + ".s"
+	plugin.NewGeneratedFile(fileRouter, file.GoImportPath)
 
-	// 定义Http服务接口
+	g.P("// defaultMemory default maximum parsing memory")
+	g.P("const defaultMemory", " = 32 << 20")
+	g.P()
+	//
+	g.P("//go:linkname validate ", string(importBinding), ".validate")
+	g.P("func validate(obj any) error")
+	g.P()
+	//
+	g.P("//go:linkname mappingByPtr ", string(importBinding), ".mappingByPtr")
+	g.P("func mappingByPtr(ptr any, setter any, tag string) error")
+	g.P()
+	//
+	g.P(`// RequestGinHandler customize the binding function, the binding method can be determined by binding parameter type and context
+	type RequestGinHandler func(c *gin.Context, req proto.Message) error
+	// ResponseGinHandler Custom response function, output response
+	type ResponseGinHandler func(c *gin.Context, res proto.Message)
+
+	var (
+		BindGinTagName string = "json"
+		// _RequestGinHandler binding handler
+		_RequestGinHandler RequestGinHandler = func(c *gin.Context, req proto.Message) error {
+			switch c.ContentType() {
+			case binding.MIMEMultipartPOSTForm:
+				if err := c.Request.ParseMultipartForm(defaultMemory); err != nil {
+					return err
+				}
+				if err := mappingByPtr(req, c.Request, BindGinTagName); err != nil {
+					return err
+				}
+			case binding.MIMEPOSTForm:
+				if err := c.Request.ParseForm(); err != nil {
+					return err
+				}
+				if err := c.Request.ParseMultipartForm(defaultMemory); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+					return err
+				}
+				return binding.MapFormWithTag(req, c.Request.Form, BindGinTagName)
+			default:
+				bs, _ := io.ReadAll(c.Request.Body)
+				if len(bs) < 1 {
+					return nil
+				}
+				return (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(bs, req)
+			}
+			return nil
+		}
+		// _OutGinResponseHandler output response handler
+		_OutGinResponseHandler ResponseGinHandler = func(c *gin.Context, res proto.Message) {
+			for _, accept := range c.Accepted{
+				switch accept {
+				case "application/json":
+					c.JSON(http.StatusOK, res)
+					return
+				case "application/xml","text/xml":
+					c.XML(http.StatusOK, res)
+					return
+				case "application/x-protobuf", "application/protobuf":
+					c.ProtoBuf(http.StatusOK, res)
+					return
+				default:
+				}
+			}
+			c.JSON(http.StatusOK, res)
+		}
+	)
+	
+	// SetRequestGinHandler set binding handler
+	func SetRequestGinHandler(v RequestGinHandler) {
+		_RequestGinHandler = v
+	}
+	
+	// SetOutGinResponseHandler set output response handler
+	func SetOutGinResponseHandler(v ResponseGinHandler) {
+		_OutGinResponseHandler = v
+	}`)
+	g.P()
+
+	generateBindParamsFunc(g)
+	generateBindQueryFunc(g)
+}
+
+func generateBindParamsFunc(g *protogen.GeneratedFile) {
+	ginContext := g.QualifiedGoIdent(importGin.Ident("Context"))
+	ginErrorTypeBind := g.QualifiedGoIdent(importGin.Ident("ErrorTypeBind"))
+	protoMessage := g.QualifiedGoIdent(importProto.Ident("Message"))
+	httpStatusBadRequest := g.QualifiedGoIdent(importNetHttp.Ident("StatusBadRequest"))
+	g.P("func _Bind_Gin_Params(c *", ginContext, ", req ", protoMessage, ") error {")
+	g.P(`m := make(map[string][]string)
+	for _, v := range c.Params {
+		m[v.Key] = []string{v.Value}
+	}
+	return binding.MapFormWithTag(req, m, BindGinTagName)`)
+	g.P("}")
+	g.P()
+	//
+	g.P("// _Must_Bind_Gin_Params must bind params")
+	g.P("func _Must_Bind_Gin_Params(c *", ginContext, ", req ", protoMessage, ") error {")
+	g.P("if err := _Bind_Gin_Params(c, req); err != nil {")
+	g.P("c.AbortWithError(", httpStatusBadRequest, ", err).SetType(", ginErrorTypeBind, ") //nolint: errcheck")
+	g.P("return err")
+	g.P("}")
+	g.P("return nil")
+	g.P("}")
+	g.P()
+}
+
+func generateBindQueryFunc(g *protogen.GeneratedFile) {
+	ginContext := g.QualifiedGoIdent(importGin.Ident("Context"))
+	ginErrorTypeBind := g.QualifiedGoIdent(importGin.Ident("ErrorTypeBind"))
+	protoMessage := g.QualifiedGoIdent(importProto.Ident("Message"))
+	httpStatusBadRequest := g.QualifiedGoIdent(importNetHttp.Ident("StatusBadRequest"))
+	g.P("func _Bind_Gin_Query(c *", ginContext, ", req ", protoMessage, ") error {")
+	g.P(`query := c.Request.URL.Query()
+		for _, v := range c.Params {
+			if query.Get(v.Key) == "" {
+				query.Set(v.Key, v.Value)
+			}
+		}
+		return binding.MapFormWithTag(req, query, BindGinTagName)`)
+	g.P("}")
+	g.P()
+	//
+	g.P("// _Must_Bind_Gin_Query must bind query")
+	g.P("func _Must_Bind_Gin_Query(c *", ginContext, ", req ", protoMessage, ") error {")
+	g.P("if err := _Bind_Gin_Query(c, req); err != nil {")
+	g.P("c.AbortWithError(", httpStatusBadRequest, ", err).SetType(", ginErrorTypeBind, ") //nolint: errcheck")
+	g.P("return err")
+	g.P("}")
+	g.P("return nil")
+	g.P("}")
+	g.P()
+}
+
+// generateUnimplemented
+func generateUnimplemented(g *protogen.GeneratedFile, service *protogen.Service, methods []*protogen.Method) {
+	contextIdent := g.QualifiedGoIdent(importContext.Ident("Context"))
+	ginIdent := g.QualifiedGoIdent(importGin.Ident(""))
+	errorsIdent := g.QualifiedGoIdent(importErrors.Ident(""))
+	httpIdent := g.QualifiedGoIdent(importNetHttp.Ident(""))
+
 	g.P("// ", service.GoName, "GinServer is the server API for ", service.GoName, " service.")
 	g.P("// All implementations must embed Unimplemented", service.GoName, "GinServer")
 	g.P("// for forward compatibility")
 	g.P("type ", service.GoName, "GinServer interface {")
-	for _, m := range protogenMethods {
-		g.P(m.GoName, "(ctx context.Context, req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error)")
+	for _, m := range methods {
+		g.P(m.GoName, "(ctx ", contextIdent, ", req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error)")
 	}
 	g.P("mustEmbedUnimplemented", service.GoName, "GinServer()")
 	g.P("}")
 
-	// Unimplemented 定义
+	// unimplemented server
 	g.P("// Unimplemented", service.GoName, "GinServer must be embedded to have forward compatible implementations.")
-	{
-		g.P("type Unimplemented", service.GoName, "GinServer struct {")
-	}
-	g.P("}")
-	for _, m := range protogenMethods {
-		g.P("func (Unimplemented", service.GoName, "GinServer) ", m.GoName, "(ctx context.Context, req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error) {")
-		{
-			g.P("return nil, gin.Error{Type: gin.ErrorTypePublic, Err: errors.New(http.StatusText(http.StatusNotImplemented))}")
-		}
+	g.P("type Unimplemented", service.GoName, "GinServer struct {}")
+	for _, m := range methods {
+		g.P("func (Unimplemented", service.GoName, "GinServer) ", m.GoName, "(ctx ", contextIdent, ", req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error) {")
+		g.P("return nil, ", ginIdent, "Error{Type: ", ginIdent, "ErrorTypePublic, Err: ", errorsIdent, "New(", httpIdent, "StatusText(", httpIdent, "StatusNotImplemented))}")
 		g.P("}")
 	}
 	g.P("func (Unimplemented", service.GoName, "GinServer) mustEmbedUnimplemented", service.GoName, "GinServer() {}")
 
-	// 注册
+	// unsafe server
 	g.P("// Unsafe", service.GoName, "GinServer may be embedded to opt out of forward compatibility for this service.")
 	g.P("// Use of this interface is not recommended, as added methods to ", service.GoName, "GinServer will")
 	g.P("// result in compilation errors.")
@@ -114,102 +261,12 @@ func (g) Generate(gen *protogen.Plugin, file *protogen.File, g *protogen.Generat
 	g.P("mustEmbedUnimplemented", service.GoName, "GinServer()")
 	g.P("}")
 	g.P()
-
-	generateBindBodyFunc(g, file)
-	// output response
-	generateOutputResponseFunc(g, file)
-
-	generateRouterMethods(g, service, methods)
-	generateHandlerMethods(g, service, methods)
-
-	return nil
-}
-
-func createUniqueFile(plugin *protogen.Plugin, file *protogen.File) {
-	if _, ok := uniqueFiles[string(file.GoImportPath)]; ok {
-		return
-	}
-	uniqueFiles[string(file.GoImportPath)] = struct{}{}
-
-	fileRouter := filepath.Dir(file.GeneratedFilenamePrefix) + "/" + filepath.Base(file.GeneratedFilenamePrefix) + ".s"
-	plugin.NewGeneratedFile(fileRouter, file.GoImportPath)
-}
-
-func generateBindBodyFunc(g *protogen.GeneratedFile, file *protogen.File) {
-	g.QualifiedGoIdent(protoIdent)
-	g.QualifiedGoIdent(bindingJsonIdent)
-	g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "io"})
-	g.QualifiedGoIdent(bindingIdent)
-	g.Import("unsafe")
-	g.QualifiedGoIdent(protogen.GoIdent{GoImportPath: "errors"})
-
-	fullname := string(file.Desc.FullName())
-
-	g.P("const defaultMemory_", uniqueFileNames[fullname], " = 32 << 20")
-	g.P("//go:linkname validate_", uniqueFileNames[fullname], " ", string(bindingIdent.GoImportPath), ".validate")
-	g.P("func validate_", uniqueFileNames[fullname], "(obj any) error")
-	g.P("//go:linkname mappingByPtr_", uniqueFileNames[fullname], " ", string(bindingIdent.GoImportPath), ".mappingByPtr")
-	g.P("func mappingByPtr_", uniqueFileNames[fullname], "(ptr any, setter any, tag string) error")
-	g.P()
-
-	g.P("func _Bind_Gin_", uniqueFileNames[fullname], "(c *gin.Context, req proto.Message) error {")
-	g.P("switch c.ContentType() {")
-	g.P("case binding.MIMEMultipartPOSTForm:")
-	{
-		g.P("if err := c.Request.ParseMultipartForm(defaultMemory_", uniqueFileNames[fullname], "); err != nil {")
-		g.P("return err")
-		g.P("}")
-		g.P("if err := mappingByPtr_", uniqueFileNames[fullname], "(req, c.Request, ", strconv.Quote("json"), "); err != nil {")
-		g.P("return err")
-		g.P("}")
-	}
-	g.P("case binding.MIMEPOSTForm:")
-	{
-		g.P("if err := c.Request.ParseForm(); err != nil {")
-		g.P("return err")
-		g.P("}")
-		g.P("if err := c.Request.ParseMultipartForm(defaultMemory_", uniqueFileNames[fullname], "); err != nil && !errors.Is(err, http.ErrNotMultipart) {")
-		g.P("return err")
-		g.P("}")
-		g.P("return binding.MapFormWithTag(req, c.Request.Form,", strconv.Quote("json"), ")")
-	}
-	g.P("default:")
-	{
-		g.P("bs, _ := io.ReadAll(c.Request.Body)")
-		g.P("if len(bs) < 1 { return nil }")
-		g.P("return (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(bs, req)")
-	}
-	g.P("}")
-	g.P("return nil")
-	g.P("}")
-	g.P()
-}
-
-func generateOutputResponseFunc(g *protogen.GeneratedFile, file *protogen.File) {
-	// output response
-	fullname := string(file.Desc.FullName())
-	g.P("func _Output_Gin_", uniqueFileNames[fullname], "(c *gin.Context, res any) {")
-	{
-		g.P("accept :=strings.ToLower(c.GetHeader(\"Accept\"))")
-		g.P("switch {")
-		{
-			g.P(`case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):`)
-			g.P("c.ProtoBuf(http.StatusOK, res)")
-			g.P(`case accept == "*/*" || strings.Contains(accept, "application/json"):`)
-			g.P("c.JSON(http.StatusOK, res)")
-			g.P(`case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):`)
-			g.P("c.XML(http.StatusOK, res)")
-			g.P(`default:`)
-			g.P("c.JSON(http.StatusOK, res)")
-		}
-		g.P("}")
-	}
-	g.P("}")
 }
 
 // generateRouterMethods 注册路由
 func generateRouterMethods(g *protogen.GeneratedFile, service *protogen.Service, methods []frames.MethodDesc) {
-	g.P("type ", service.GoName, "GinRouter = gin.IRoutes")
+	ginIRoutesIdent := g.QualifiedGoIdent(importGin.Ident("IRoutes"))
+	g.P("type ", service.GoName, "GinRouter = ", ginIRoutesIdent)
 	g.P()
 	g.P("func Register", service.GoName, "GinServer(r ", service.GoName, "GinRouter, srv ", service.GoName, "GinServer) {")
 	for _, m := range methods {
@@ -227,95 +284,60 @@ func generateHandlerMethods(g *protogen.GeneratedFile, service *protogen.Service
 }
 
 func generateHandlerMethod(g *protogen.GeneratedFile, service *protogen.Service, m frames.MethodDesc) {
-	fullname := string(service.Desc.ParentFile().FullName())
+	ginContextIdent := g.QualifiedGoIdent(importGin.Ident("Context"))
 	g.P(fmt.Sprintf("func _%s_%s%d_Gin_Handler(srv %sGinServer) gin.HandlerFunc {", service.GoName, m.GoName, m.Num, service.GoName))
-	// start handler
+	g.P("return func(c *", ginContextIdent, ") {")
+	g.P("req := new(", m.Input.GoIdent, ")")
+	generateBindRequest(g, m)
+	// request response result
+	g.P("res, err := srv.", m.GoName, "(c, req)")
+	g.P("if err != nil { c.Abort() \n c.Error(err) \n return }")
 	{
-		g.P("return func(c *gin.Context) {")
-		g.P("req := new(", m.Input.GoIdent, ")")
-		switch m.Input.Desc.FullName() {
-		case "google.protobuf.Empty":
-			break
-		default:
-			g.P("// param bind and validate")
-			// Perform different bindings by request
-			switch m.MethodName {
-			case http.MethodGet, http.MethodDelete:
-				generateBindQuery(g, len(m.Params) > 0, true)
-			default:
-				if len(m.Params) > 0 {
-					generateBindParams(g, false)
-				}
-				g.P("if err := _Bind_Gin_", uniqueFileNames[fullname], "(c, req", m.Body, "); err != nil {")
-				generateBindAbort(g)
-				g.P("}")
-			}
-			// validate
-			g.P("if err := validate_", uniqueFileNames[fullname], "(req); err != nil {")
-			generateBindAbort(g)
-			g.P("}")
+		resSuffix := ""
+		if m.ResponseBody != "" {
+			resSuffix = "p"
+			g.P("res", resSuffix, " := res", m.ResponseBody)
 		}
-
-		// request response result
-		g.P("// response body")
-		g.P("res, err := srv.", m.GoName, "(c, req)")
-		g.P("if err != nil { c.Abort() \n c.Error(err) \n return }")
-		{
-			resSuffix := ""
-			if m.ResponseBody != "" {
-				resSuffix = "p"
-				g.P("// return res", m.ResponseBody, " value")
-				g.P("res", resSuffix, " := res", m.ResponseBody)
-			}
-			g.P("_Output_Gin_", uniqueFileNames[fullname], "(c, res", resSuffix, ")")
-		}
-		g.P("}")
+		g.P("_OutGinResponseHandler(c, res", resSuffix, ")")
 	}
+	g.P("}")
+
 	// end
 	g.P("}")
 	g.P()
 }
 
-func generateBindParams(g *protogen.GeneratedFile, checkErr bool) {
-	g.P("// bind http.Request path params")
-	g.P("{")
-	{
-		g.P("m := make(map[string][]string)")
-		g.P("for _, v := range c.Params {")
-		g.P("m[v.Key] = []string{v.Value}")
-		g.P("}")
-		if checkErr {
-			g.P("if err := binding.MapFormWithTag(req, m, ", strconv.Quote("json"), "); err != nil {")
-			generateBindAbort(g)
-			g.P("}")
-		} else {
-			g.P("_ = binding.MapFormWithTag(req, m, ", strconv.Quote("json"), ")")
-		}
+func generateBindRequest(g *protogen.GeneratedFile, m frames.MethodDesc) {
+	switch m.Input.Desc.FullName() {
+	case "google.protobuf.Empty":
+		return
+	default:
 	}
-	g.P("}")
-}
+	ginErrorTypeBind := g.QualifiedGoIdent(importGin.Ident("ErrorTypeBind"))
+	httpStatusBadRequest := g.QualifiedGoIdent(importNetHttp.Ident("StatusBadRequest"))
+	// get and delete bind query and path params
+	if len(m.Params) > 0 {
+		g.P(`if err := _Must_Bind_Gin_Params(c, req); err != nil {
+			return
+		}`)
+	}
 
-func generateBindQuery(g *protogen.GeneratedFile, hasParams bool, checkErr bool) {
-	g.P("// bind http.Request query")
-	g.P("query := c.Request.URL.Query()")
-	if hasParams {
-		g.P("for _, v := range c.Params {")
-		g.P("if query.Get(v.Key) == ", strconv.Quote(""), "{")
-		g.P("query.Set(v.Key, v.Value)")
-		g.P("}")
-		g.P("query[v.Key] = []string{v.Value}")
-		g.P("}")
-	}
-	if checkErr {
-		g.P("if err := binding.MapFormWithTag(req, query, ", strconv.Quote("json"), "); err != nil {")
-		generateBindAbort(g)
-		g.P("}")
-	} else {
-		g.P("_ = binding.MapFormWithTag(req, query, ", strconv.Quote("json"), ")")
-	}
-}
+	abortErrorStr := fmt.Sprintf("c.AbortWithError(%s, err).SetType(%s) //nolint: errcheck", httpStatusBadRequest, ginErrorTypeBind)
 
-func generateBindAbort(g *protogen.GeneratedFile) {
-	g.P("c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck")
+	switch m.MethodName {
+	case http.MethodGet, http.MethodDelete:
+		g.P(`if err := _Must_Bind_Gin_Query(c, req`, m.Body, `); err != nil {
+			return
+		}`)
+	default:
+		g.P("if err := _RequestGinHandler(c, req", m.Body, "); err != nil {")
+		g.P(abortErrorStr)
+		g.P("return")
+		g.P("}")
+	}
+
+	g.P("if err := validate(req); err != nil {")
+	g.P(abortErrorStr)
 	g.P("return")
+	g.P("}")
 }
