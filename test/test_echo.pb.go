@@ -29,7 +29,7 @@ func echoParseAccept(acceptHeader string) []string {
 	return out
 }
 
-func _OutEchoResponseHandler(c v4.Context, res proto.Message) error {
+func _OutEchoResponseHandler(c v4.Context, res any) error {
 	accepted := echoParseAccept(c.Request().Header.Get("Accept"))
 	for _, accept := range accepted {
 		switch accept {

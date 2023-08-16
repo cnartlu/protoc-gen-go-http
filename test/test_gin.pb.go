@@ -35,7 +35,7 @@ func ginParseAccept(acceptHeader string) []string
 type RequestGinHandler func(c *gin.Context, req proto.Message) error
 
 // ResponseGinHandler Custom response function, output response
-type ResponseGinHandler func(c *gin.Context, res proto.Message)
+type ResponseGinHandler func(c *gin.Context, res any)
 
 var (
 	BindGinTagName string = "json"
@@ -77,7 +77,7 @@ func bindGinRequestBodyHandler(c *gin.Context, req proto.Message) error {
 	return nil
 }
 
-func outGinResponseHandler(c *gin.Context, res proto.Message) {
+func outGinResponseHandler(c *gin.Context, res any) {
 	if c.Accepted == nil {
 		c.Accepted = ginParseAccept(c.Request.Header.Get("Accept"))
 	}

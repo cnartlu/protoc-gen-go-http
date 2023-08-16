@@ -96,9 +96,9 @@ func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.
 	g.P()
 
 	contextIdent := g.QualifiedGoIdent(importEcho.Ident("Context"))
-	messageIdent := g.QualifiedGoIdent(importProto.Ident("Message"))
+	_ = g.QualifiedGoIdent(importProto.Ident("Message"))
 	g.QualifiedGoIdent(importHttp.Ident(""))
-	g.P("func _OutEchoResponseHandler(c ", contextIdent, ", res ", messageIdent, ") error {")
+	g.P("func _OutEchoResponseHandler(c ", contextIdent, ", res any) error {")
 	g.P("accepted := echoParseAccept(c.Request().Header.Get(", strconv.Quote("Accept"), "))")
 	g.P(`for _, accept := range accepted {
 		switch accept {

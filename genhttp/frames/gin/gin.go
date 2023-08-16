@@ -113,7 +113,7 @@ func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.
 	g.P(`// RequestGinHandler customize the binding function, the binding method can be determined by binding parameter type and context
 	type RequestGinHandler func(c *gin.Context, req proto.Message) error
 	// ResponseGinHandler Custom response function, output response
-	type ResponseGinHandler func(c *gin.Context, res proto.Message)
+	type ResponseGinHandler func(c *gin.Context, res any)
 
 	var (
 		BindGinTagName string = "json"
@@ -155,7 +155,7 @@ func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.
 		return nil
 	}
 
-	func outGinResponseHandler(c *gin.Context, res proto.Message) {
+	func outGinResponseHandler(c *gin.Context, res any) {
 		if c.Accepted == nil {
 			c.Accepted = ginParseAccept(c.Request.Header.Get("Accept"))
 		}
