@@ -261,7 +261,7 @@ func generateUnimplemented(g *protogen.GeneratedFile, service *protogen.Service,
 	for _, m := range methods {
 		g.P(m.GoName, "(ctx ", contextIdent, ", req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error)")
 	}
-	g.P("mustEmbedUnimplemented", service.GoName, "GinServer()")
+	g.P("mustEmbedUnimplemented", service.GoName, "Server()")
 	g.P("}")
 
 	// unimplemented server
@@ -272,14 +272,14 @@ func generateUnimplemented(g *protogen.GeneratedFile, service *protogen.Service,
 		g.P("return nil, ", ginIdent, "Error{Type: ", ginIdent, "ErrorTypePublic, Err: ", errorsIdent, "New(", httpIdent, "StatusText(", httpIdent, "StatusNotImplemented))}")
 		g.P("}")
 	}
-	g.P("func (Unimplemented", service.GoName, "GinServer) mustEmbedUnimplemented", service.GoName, "GinServer() {}")
+	g.P("func (Unimplemented", service.GoName, "GinServer) mustEmbedUnimplemented", service.GoName, "Server() {}")
 
 	// unsafe server
 	g.P("// Unsafe", service.GoName, "GinServer may be embedded to opt out of forward compatibility for this service.")
 	g.P("// Use of this interface is not recommended, as added methods to ", service.GoName, "GinServer will")
 	g.P("// result in compilation errors.")
 	g.P("type Unsafe", service.GoName, "GinServer interface {")
-	g.P("mustEmbedUnimplemented", service.GoName, "GinServer()")
+	g.P("mustEmbedUnimplemented", service.GoName, "Server()")
 	g.P("}")
 	g.P()
 }

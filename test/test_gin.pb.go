@@ -157,7 +157,7 @@ type TestGinServer interface {
 	Create(ctx context.Context, req *CreateTestRequest) (*CreateTestReply, error)
 	Update(ctx context.Context, req *UpdateTestRequest) (*UpdateTestReply, error)
 	Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error)
-	mustEmbedUnimplementedTestGinServer()
+	mustEmbedUnimplementedTestServer()
 }
 
 // UnimplementedTestGinServer must be embedded to have forward compatible implementations.
@@ -178,13 +178,13 @@ func (UnimplementedTestGinServer) Update(ctx context.Context, req *UpdateTestReq
 func (UnimplementedTestGinServer) Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error) {
 	return nil, gin.Error{Type: gin.ErrorTypePublic, Err: errors.New(http.StatusText(http.StatusNotImplemented))}
 }
-func (UnimplementedTestGinServer) mustEmbedUnimplementedTestGinServer() {}
+func (UnimplementedTestGinServer) mustEmbedUnimplementedTestServer() {}
 
 // UnsafeTestGinServer may be embedded to opt out of forward compatibility for this service.
 // Use of this interface is not recommended, as added methods to TestGinServer will
 // result in compilation errors.
 type UnsafeTestGinServer interface {
-	mustEmbedUnimplementedTestGinServer()
+	mustEmbedUnimplementedTestServer()
 }
 
 type TestGinRouter = gin.IRoutes

@@ -55,7 +55,7 @@ type TestEchoServer interface {
 	Create(ctx context.Context, req *CreateTestRequest) (*CreateTestReply, error)
 	Update(ctx context.Context, req *UpdateTestRequest) (*UpdateTestReply, error)
 	Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error)
-	mustEmbedUnimplementedTestEchoServer()
+	mustEmbedUnimplementedTestServer()
 }
 
 // UnimplementedTestEchoServer must be embedded to have forward compatible implementations.
@@ -77,13 +77,13 @@ func (UnimplementedTestEchoServer) Update(ctx context.Context, req *UpdateTestRe
 func (UnimplementedTestEchoServer) Delete(ctx context.Context, req *DeleteTestRequest) (*emptypb.Empty, error) {
 	return nil, v4.ErrNotImplemented
 }
-func (UnimplementedTestEchoServer) mustEmbedUnimplementedTestEchoServer() {}
+func (UnimplementedTestEchoServer) mustEmbedUnimplementedTestServer() {}
 
 // UnsafeTestEchoServer may be embedded to opt out of forward compatibility for this service.
 // Use of this interface is not recommended, as added methods to TestEchoServer will
 // result in compilation errors.
 type UnsafeTestEchoServer interface {
-	mustEmbedUnimplementedTestEchoServer()
+	mustEmbedUnimplementedTestServer()
 }
 
 type TestHttpRouter interface {

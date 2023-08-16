@@ -129,7 +129,7 @@ func generateUnimplemented(g *protogen.GeneratedFile, service *protogen.Service,
 	for _, m := range methods {
 		g.P(m.GoName, "(ctx ", contextIdent, ", req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error)")
 	}
-	g.P("mustEmbedUnimplemented", service.GoName, "EchoServer()")
+	g.P("mustEmbedUnimplemented", service.GoName, "Server()")
 	g.P("}")
 
 	// Unimplemented server
@@ -142,14 +142,14 @@ func generateUnimplemented(g *protogen.GeneratedFile, service *protogen.Service,
 		g.P("return nil, ", ErrNotImplementedIdent)
 		g.P("}")
 	}
-	g.P("func (Unimplemented", service.GoName, "EchoServer) mustEmbedUnimplemented", service.GoName, "EchoServer() {}")
+	g.P("func (Unimplemented", service.GoName, "EchoServer) mustEmbedUnimplemented", service.GoName, "Server() {}")
 
 	// unsafe server
 	g.P("// Unsafe", service.GoName, "EchoServer may be embedded to opt out of forward compatibility for this service.")
 	g.P("// Use of this interface is not recommended, as added methods to ", service.GoName, "EchoServer will")
 	g.P("// result in compilation errors.")
 	g.P("type Unsafe", service.GoName, "EchoServer interface {")
-	g.P("mustEmbedUnimplemented", service.GoName, "EchoServer()")
+	g.P("mustEmbedUnimplemented", service.GoName, "Server()")
 	g.P("}")
 	g.P()
 }
