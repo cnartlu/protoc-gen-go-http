@@ -15,6 +15,37 @@ import (
 	strings "strings"
 )
 
+func echoParseAccept(acceptHeader string) []string {
+	parts := strings.Split(acceptHeader, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if i := strings.IndexByte(part, ';'); i > 0 {
+			part = part[:i]
+		}
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func _OutEchoResponseHandler(c v4.Context, res proto.Message) error {
+	accepted := echoParseAccept(c.Request().Header.Get("Accept"))
+	for _, accept := range accepted {
+		switch accept {
+		case "application/json":
+			return c.JSON(http.StatusOK, res)
+		case "application/xml", "text/xml":
+			return c.XML(http.StatusOK, res)
+		case "application/x-protobuf", "application/protobuf":
+			bs, _ := proto.Marshal(res.(proto.Message))
+			return c.Blob(http.StatusOK, "application/x-protobuf", bs)
+		default:
+		}
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
 // TestEchoServer is the server API for Test service.
 // All implementations must embed UnimplementedTestEchoServer
 // for forward compatibility
@@ -60,7 +91,7 @@ type TestHttpRouter interface {
 }
 
 func RegisterTestEchoServer(r TestHttpRouter, srv TestEchoServer) {
-	r.Add("GET", "/account/:id/:c_asa_2c_3/:kk/aa:*", _Test_List0_Echo_Handler(srv))
+	r.Add("GET", "/account/:id/:c_asa_2c_3/:kk/*aa", _Test_List0_Echo_Handler(srv))
 	r.Add("POST", "/as/a/::id", _Test_List1_Echo_Handler(srv))
 	r.Add("GET", "/account/:id", _Test_Get0_Echo_Handler(srv))
 	r.Add("POST", "/account", _Test_Create0_Echo_Handler(srv))
@@ -74,16 +105,14 @@ func _Test_List0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 		if err := c.Bind(req); err != nil {
 			return err
 		}
-		// param validate
 		if err := c.Validate(req); err != nil && err != v4.ErrValidatorNotRegistered {
 			return err
 		}
-		// response body
 		res, err := srv.List(c.Request().Context(), req)
 		if err != nil {
 			return err
 		}
-		return _Output_Echo_Test(c, res)
+		return _OutEchoResponseHandler(c, res)
 	}
 }
 
@@ -93,16 +122,14 @@ func _Test_List1_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 		if err := c.Bind(req); err != nil {
 			return err
 		}
-		// param validate
 		if err := c.Validate(req); err != nil && err != v4.ErrValidatorNotRegistered {
 			return err
 		}
-		// response body
 		res, err := srv.List(c.Request().Context(), req)
 		if err != nil {
 			return err
 		}
-		return _Output_Echo_Test(c, res)
+		return _OutEchoResponseHandler(c, res)
 	}
 }
 
@@ -112,16 +139,14 @@ func _Test_Get0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 		if err := c.Bind(req); err != nil {
 			return err
 		}
-		// param validate
 		if err := c.Validate(req); err != nil && err != v4.ErrValidatorNotRegistered {
 			return err
 		}
-		// response body
 		res, err := srv.Get(c.Request().Context(), req)
 		if err != nil {
 			return err
 		}
-		return _Output_Echo_Test(c, res)
+		return _OutEchoResponseHandler(c, res)
 	}
 }
 
@@ -131,16 +156,14 @@ func _Test_Create0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 		if err := c.Bind(req); err != nil {
 			return err
 		}
-		// param validate
 		if err := c.Validate(req); err != nil && err != v4.ErrValidatorNotRegistered {
 			return err
 		}
-		// response body
 		res, err := srv.Create(c.Request().Context(), req)
 		if err != nil {
 			return err
 		}
-		return _Output_Echo_Test(c, res)
+		return _OutEchoResponseHandler(c, res)
 	}
 }
 
@@ -150,16 +173,14 @@ func _Test_Update0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 		if err := c.Bind(req); err != nil {
 			return err
 		}
-		// param validate
 		if err := c.Validate(req); err != nil && err != v4.ErrValidatorNotRegistered {
 			return err
 		}
-		// response body
 		res, err := srv.Update(c.Request().Context(), req)
 		if err != nil {
 			return err
 		}
-		return _Output_Echo_Test(c, res)
+		return _OutEchoResponseHandler(c, res)
 	}
 }
 
@@ -169,30 +190,13 @@ func _Test_Delete0_Echo_Handler(srv TestEchoServer) v4.HandlerFunc {
 		if err := c.Bind(req); err != nil {
 			return err
 		}
-		// param validate
 		if err := c.Validate(req); err != nil && err != v4.ErrValidatorNotRegistered {
 			return err
 		}
-		// response body
 		res, err := srv.Delete(c.Request().Context(), req)
 		if err != nil {
 			return err
 		}
-		return _Output_Echo_Test(c, res)
-	}
-}
-
-func _Output_Echo_Test(c v4.Context, res any) error {
-	accept := strings.ToLower(c.Request().Header.Get("Accept"))
-	switch {
-	case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):
-		bs, _ := proto.Marshal(res.(proto.Message))
-		return c.Blob(http.StatusOK, "application/x-protobuf", bs)
-	case accept == "*/*" || strings.Contains(accept, "application/json"):
-		return c.JSON(http.StatusOK, res)
-	case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):
-		return c.XML(http.StatusOK, res)
-	default:
-		return c.JSON(http.StatusOK, res)
+		return _OutEchoResponseHandler(c, res)
 	}
 }

@@ -2,6 +2,7 @@ package echo
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/cnartlu/protoc-gen-go-http/genhttp/frames"
 	"google.golang.org/genproto/googleapis/api/annotations"
@@ -12,6 +13,19 @@ import (
 func init() {
 	frames.RegisterFrame(e{})
 }
+
+var (
+	importEcho    = protogen.GoImportPath("github.com/labstack/echo/v4")
+	importProto   = protogen.GoImportPath("google.golang.org/protobuf/proto")
+	importStrings = protogen.GoImportPath("strings")
+	importContext = protogen.GoImportPath("context")
+	importHttp    = protogen.GoImportPath("net/http")
+)
+
+var (
+	// unique func implementation
+	uniqueFuncs = map[string]struct{}{}
+)
 
 type e struct{}
 
@@ -50,39 +64,87 @@ func (e) Generate(gen *protogen.Plugin, file *protogen.File, g *protogen.Generat
 		return nil
 	}
 
-	g.QualifiedGoIdent(protogen.GoImportPath("net/http").Ident(""))
-	g.QualifiedGoIdent(protogen.GoImportPath("context").Ident(""))
-	g.QualifiedGoIdent(protogen.GoImportPath("strings").Ident(""))
-	g.QualifiedGoIdent(protogen.GoImportPath("github.com/labstack/echo/v4").Ident(""))
-	g.QualifiedGoIdent(protogen.GoImportPath("google.golang.org/protobuf/proto").Ident(""))
+	createUniquefunc(gen, file, g)
+	generateUnimplemented(g, service, protogenMethods)
+	generateRouterMethods(g, service, methods)
+	generateHandlerMethods(g, service, methods)
+	return nil
+}
 
-	// 定义Http服务接口
+// createUniquefunc package unique func
+func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile) {
+	if _, ok := uniqueFuncs[string(file.GoImportPath)]; ok {
+		return
+	}
+	uniqueFuncs[string(file.GoImportPath)] = struct{}{}
+
+	g.QualifiedGoIdent(importStrings.Ident(""))
+	// write parseAccept func
+	g.P(`func echoParseAccept(acceptHeader string) []string {
+	parts := strings.Split(acceptHeader, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if i := strings.IndexByte(part, ';'); i > 0 {
+			part = part[:i]
+		}
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}`)
+	g.P()
+
+	contextIdent := g.QualifiedGoIdent(importEcho.Ident("Context"))
+	messageIdent := g.QualifiedGoIdent(importProto.Ident("Message"))
+	g.QualifiedGoIdent(importHttp.Ident(""))
+	g.P("func _OutEchoResponseHandler(c ", contextIdent, ", res ", messageIdent, ") error {")
+	g.P("accepted := echoParseAccept(c.Request().Header.Get(", strconv.Quote("Accept"), "))")
+	g.P(`for _, accept := range accepted {
+		switch accept {
+		case "application/json":
+			return c.JSON(http.StatusOK, res)
+		case "application/xml","text/xml":
+			return c.XML(http.StatusOK, res)
+		case "application/x-protobuf", "application/protobuf":
+			bs, _ := proto.Marshal(res.(proto.Message))
+			return c.Blob(http.StatusOK, "application/x-protobuf", bs)
+		default:
+		}
+	}
+	return c.JSON(http.StatusOK, res)`)
+	g.P("}")
+
+}
+
+func generateUnimplemented(g *protogen.GeneratedFile, service *protogen.Service, methods []*protogen.Method) {
+	contextIdent := g.QualifiedGoIdent(importContext.Ident("Context"))
+	ErrNotImplementedIdent := g.QualifiedGoIdent(importEcho.Ident("ErrNotImplemented"))
+
+	// Unimplemented server interface
 	g.P("// ", service.GoName, "EchoServer is the server API for ", service.GoName, " service.")
 	g.P("// All implementations must embed Unimplemented", service.GoName, "EchoServer")
 	g.P("// for forward compatibility")
 	g.P("type ", service.GoName, "EchoServer interface {")
-	for _, m := range protogenMethods {
-		g.P(m.GoName, "(ctx context.Context, req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error)")
+	for _, m := range methods {
+		g.P(m.GoName, "(ctx ", contextIdent, ", req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error)")
 	}
 	g.P("mustEmbedUnimplemented", service.GoName, "EchoServer()")
 	g.P("}")
 
-	// Unimplemented 定义
+	// Unimplemented server
 	g.P("// Unimplemented", service.GoName, "EchoServer must be embedded to have forward compatible implementations.")
-	{
-		g.P("type Unimplemented", service.GoName, "EchoServer struct {")
-	}
+	g.P("type Unimplemented", service.GoName, "EchoServer struct {")
 	g.P("}")
-	for _, m := range protogenMethods {
-		g.P("func (Unimplemented", service.GoName, "EchoServer) ", m.GoName, "(ctx context.Context, req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error) {")
-		{
-			g.P("return nil, v4.ErrNotImplemented")
-		}
+
+	for _, m := range methods {
+		g.P("func (Unimplemented", service.GoName, "EchoServer) ", m.GoName, "(ctx ", contextIdent, ", req *", m.Input.GoIdent, ") (*", m.Output.GoIdent, ", error) {")
+		g.P("return nil, ", ErrNotImplementedIdent)
 		g.P("}")
 	}
 	g.P("func (Unimplemented", service.GoName, "EchoServer) mustEmbedUnimplemented", service.GoName, "EchoServer() {}")
 
-	// 注册
+	// unsafe server
 	g.P("// Unsafe", service.GoName, "EchoServer may be embedded to opt out of forward compatibility for this service.")
 	g.P("// Use of this interface is not recommended, as added methods to ", service.GoName, "EchoServer will")
 	g.P("// result in compilation errors.")
@@ -90,39 +152,16 @@ func (e) Generate(gen *protogen.Plugin, file *protogen.File, g *protogen.Generat
 	g.P("mustEmbedUnimplemented", service.GoName, "EchoServer()")
 	g.P("}")
 	g.P()
-
-	generateRouterMethods(g, service, methods)
-	generateHandlerMethods(g, service, methods)
-
-	// output response
-	g.P("func _Output_Echo_", service.GoName, "(c v4.Context, res any) error {")
-	{
-		g.P("accept :=strings.ToLower(c.Request().Header.Get(\"Accept\"))")
-		g.P("switch {")
-		{
-			g.P(`case strings.Contains(accept, "application/x-protobuf") || strings.Contains(accept, "application/protobuf"):`)
-			g.P("bs,_ := proto.Marshal(res.(proto.Message))")
-			g.P(`return c.Blob(http.StatusOK, "application/x-protobuf", bs)`)
-			g.P(`case accept == "*/*" || strings.Contains(accept, "application/json"):`)
-			g.P("return c.JSON(http.StatusOK, res)")
-			g.P(`case strings.Contains(accept, "application/xml") || strings.Contains(accept, "text/xml"):`)
-			g.P("return c.XML(http.StatusOK, res)")
-			g.P(`default:`)
-			g.P("return c.JSON(http.StatusOK, res)")
-		}
-		g.P("}")
-	}
-	g.P("}")
-
-	return nil
 }
 
 // generateRouterMethods 注册路由
 func generateRouterMethods(g *protogen.GeneratedFile, service *protogen.Service, methods []frames.MethodDesc) {
+	routeIdent := g.QualifiedGoIdent(importEcho.Ident("Route"))
+	handlerFuncIdent := g.QualifiedGoIdent(importEcho.Ident("HandlerFunc"))
+	middlewareFuncIdent := g.QualifiedGoIdent(importEcho.Ident("MiddlewareFunc"))
+
 	g.P("type ", service.GoName, "HttpRouter interface {")
-	{
-		g.P("Add(method, path string, handler v4.HandlerFunc, middleware ...v4.MiddlewareFunc) *v4.Route")
-	}
+	g.P("Add(method, path string, handler ", handlerFuncIdent, ", middleware ...", middlewareFuncIdent, ") *", routeIdent)
 	g.P("}")
 	g.P()
 	g.P("func Register", service.GoName, "EchoServer(r ", service.GoName, "HttpRouter, srv ", service.GoName, "EchoServer) {")
@@ -141,41 +180,39 @@ func generateHandlerMethods(g *protogen.GeneratedFile, service *protogen.Service
 }
 
 func generateHandlerMethod(g *protogen.GeneratedFile, service *protogen.Service, m frames.MethodDesc) {
-	g.P(fmt.Sprintf("func _%s_%s%d_Echo_Handler(srv %sEchoServer) v4.HandlerFunc {", service.GoName, m.GoName, m.Num, service.GoName))
-	// start handler
-	{
-		g.P("return func(c v4.Context) error {")
-		g.P("req := new(", m.Input.GoIdent, ")")
-		// 判断输入是否为空
-		{
-			switch m.Input.Desc.FullName() {
-			case "google.protobuf.Empty":
-				break
-			default:
-				g.P("if err := c.Bind(req" + m.Body + "); err != nil { return err }")
-			}
-		}
-		// 参数验证
-		{
-			g.P("// param validate")
-			g.P("if err:= c.Validate(req); err != nil && err != v4.ErrValidatorNotRegistered { return err }")
-		}
-		// 请求响应结果
-		g.P("// response body")
-		g.P("res, err := srv.", m.GoName, "(c.Request().Context(), req)")
-		g.P("if err != nil { return err }")
-		{
-			resSuffix := ""
-			if m.ResponseBody != "" {
-				resSuffix = "p"
-				g.P("// return res", m.ResponseBody, " value")
-				g.P("res", resSuffix, " := res", m.ResponseBody)
-			}
-			g.P("return _Output_Echo_", service.GoName, "(c, res", resSuffix, ")")
-		}
-		g.P("}")
-	}
-	// end
+	handlerFuncIdent := g.QualifiedGoIdent(importEcho.Ident("HandlerFunc"))
+	g.P("func _", service.GoName, "_", m.GoName, m.Num, "_Echo_Handler(srv ", service.GoName, "EchoServer) ", handlerFuncIdent, " {")
+	generateHandlerMethodHandler(g, service, m)
 	g.P("}")
 	g.P()
+}
+
+func generateHandlerMethodHandler(g *protogen.GeneratedFile, service *protogen.Service, m frames.MethodDesc) {
+	contextIdent := g.QualifiedGoIdent(importEcho.Ident("Context"))
+	ErrValidatorNotRegisteredIdent := g.QualifiedGoIdent(importEcho.Ident("ErrValidatorNotRegistered"))
+
+	g.P("return func(c ", contextIdent, ") error {")
+	g.P("req := new(", m.Input.GoIdent, ")")
+
+	switch m.Input.Desc.FullName() {
+	case "google.protobuf.Empty":
+		break
+	default:
+		if len(m.Params) > 0 && m.Body != "" {
+			g.P("_ = c.Bind(req)")
+		}
+		g.P("if err := c.Bind(req" + m.Body + "); err != nil { return err }")
+	}
+
+	g.P("if err:= c.Validate(req); err != nil && err != ", ErrValidatorNotRegisteredIdent, " { return err }")
+
+	g.P("res, err := srv.", m.GoName, "(c.Request().Context(), req)")
+	g.P("if err != nil { return err }")
+
+	if m.ResponseBody != "" {
+		g.P("return _OutEchoResponseHandler(c, res", m.ResponseBody, ")")
+	} else {
+		g.P("return _OutEchoResponseHandler(c, res)")
+	}
+	g.P("}")
 }

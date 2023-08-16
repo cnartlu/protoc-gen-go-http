@@ -86,6 +86,7 @@ func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.
 	g.QualifiedGoIdent(importBinding.Ident(""))
 	g.QualifiedGoIdent(importIo.Ident(""))
 	g.QualifiedGoIdent(importProtoJson.Ident(""))
+	g.QualifiedGoIdent(importGin.Ident(""))
 	g.Import(importUnsafe)
 
 	// Add an assembly file with the suffix name s(.s) to ensure that the go build command is executable,
@@ -105,6 +106,10 @@ func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.
 	g.P("func mappingByPtr(ptr any, setter any, tag string) error")
 	g.P()
 	//
+	g.P("//go:linkname ginParseAccept ", string(importGin), ".parseAccept")
+	g.P("func ginParseAccept(acceptHeader string) []string")
+	g.P()
+	//
 	g.P(`// RequestGinHandler customize the binding function, the binding method can be determined by binding parameter type and context
 	type RequestGinHandler func(c *gin.Context, req proto.Message) error
 	// ResponseGinHandler Custom response function, output response
@@ -112,56 +117,72 @@ func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.
 
 	var (
 		BindGinTagName string = "json"
-		// _RequestGinHandler binding handler
-		_RequestGinHandler RequestGinHandler = func(c *gin.Context, req proto.Message) error {
-			switch c.ContentType() {
-			case binding.MIMEMultipartPOSTForm:
-				if err := c.Request.ParseMultipartForm(defaultMemory); err != nil {
-					return err
-				}
-				if err := mappingByPtr(req, c.Request, BindGinTagName); err != nil {
-					return err
-				}
-			case binding.MIMEPOSTForm:
-				if err := c.Request.ParseForm(); err != nil {
-					return err
-				}
-				if err := c.Request.ParseMultipartForm(defaultMemory); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-					return err
-				}
-				return binding.MapFormWithTag(req, c.Request.Form, BindGinTagName)
-			default:
-				bs, _ := io.ReadAll(c.Request.Body)
-				if len(bs) < 1 {
-					return nil
-				}
-				return (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(bs, req)
-			}
-			return nil
-		}
+		// _BindGinRequestHandler binding handler
+		_BindGinRequestHandler RequestGinHandler
 		// _OutGinResponseHandler output response handler
-		_OutGinResponseHandler ResponseGinHandler = func(c *gin.Context, res proto.Message) {
-			for _, accept := range c.Accepted{
-				switch accept {
-				case "application/json":
-					c.JSON(http.StatusOK, res)
-					return
-				case "application/xml","text/xml":
-					c.XML(http.StatusOK, res)
-					return
-				case "application/x-protobuf", "application/protobuf":
-					c.ProtoBuf(http.StatusOK, res)
-					return
-				default:
-				}
-			}
-			c.JSON(http.StatusOK, res)
-		}
+		_OutGinResponseHandler ResponseGinHandler
+
+		JSON = protojson.UnmarshalOptions{DiscardUnknown: true}
 	)
-	
-	// SetRequestGinHandler set binding handler
-	func SetRequestGinHandler(v RequestGinHandler) {
-		_RequestGinHandler = v
+
+	func bindGinRequestBodyHandler(c *gin.Context, req proto.Message) error {
+		if _BindGinRequestHandler != nil {
+			return _BindGinRequestHandler(c, req)
+		}
+		switch c.ContentType() {
+		case binding.MIMEMultipartPOSTForm:
+			if err := c.Request.ParseMultipartForm(defaultMemory); err != nil {
+				return err
+			}
+			if err := mappingByPtr(req, c.Request, BindGinTagName); err != nil {
+				return err
+			}
+		case binding.MIMEPOSTForm:
+			if err := c.Request.ParseForm(); err != nil {
+				return err
+			}
+			if err := c.Request.ParseMultipartForm(defaultMemory); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+				return err
+			}
+			return binding.MapFormWithTag(req, c.Request.Form, BindGinTagName)
+		default:
+			bs, _ := io.ReadAll(c.Request.Body)
+			if len(bs) < 1 {
+				return nil
+			}
+			return JSON.Unmarshal(bs, req)
+		}
+		return nil
+	}
+
+	func outGinResponseHandler(c *gin.Context, res proto.Message) {
+		if c.Accepted == nil {
+			c.Accepted = ginParseAccept(c.Request.Header.Get("Accept"))
+		}
+		if _OutGinResponseHandler != nil {
+			_OutGinResponseHandler(c, res)
+			return
+		}
+		for _, accept := range c.Accepted {
+			switch accept {
+			case "application/json":
+				c.JSON(http.StatusOK, res)
+				return
+			case "application/xml","text/xml":
+				c.XML(http.StatusOK, res)
+				return
+			case "application/x-protobuf", "application/protobuf":
+				c.ProtoBuf(http.StatusOK, res)
+				return
+			default:
+			}
+		}
+		c.JSON(http.StatusOK, res)
+	}
+
+	// SetBindGinRequestHandler set binding handler
+	func SetBindGinRequestHandler(v RequestGinHandler) {
+		_BindGinRequestHandler = v
 	}
 	
 	// SetOutGinResponseHandler set output response handler
@@ -284,27 +305,25 @@ func generateHandlerMethods(g *protogen.GeneratedFile, service *protogen.Service
 }
 
 func generateHandlerMethod(g *protogen.GeneratedFile, service *protogen.Service, m frames.MethodDesc) {
-	ginContextIdent := g.QualifiedGoIdent(importGin.Ident("Context"))
 	g.P(fmt.Sprintf("func _%s_%s%d_Gin_Handler(srv %sGinServer) gin.HandlerFunc {", service.GoName, m.GoName, m.Num, service.GoName))
+	generateHandlerMethodHandler(g, service, m)
+	g.P("}")
+	g.P()
+}
+
+func generateHandlerMethodHandler(g *protogen.GeneratedFile, service *protogen.Service, m frames.MethodDesc) {
+	ginContextIdent := g.QualifiedGoIdent(importGin.Ident("Context"))
 	g.P("return func(c *", ginContextIdent, ") {")
 	g.P("req := new(", m.Input.GoIdent, ")")
 	generateBindRequest(g, m)
-	// request response result
 	g.P("res, err := srv.", m.GoName, "(c, req)")
 	g.P("if err != nil { c.Abort() \n c.Error(err) \n return }")
-	{
-		resSuffix := ""
-		if m.ResponseBody != "" {
-			resSuffix = "p"
-			g.P("res", resSuffix, " := res", m.ResponseBody)
-		}
-		g.P("_OutGinResponseHandler(c, res", resSuffix, ")")
+	if m.ResponseBody != "" {
+		g.P("outGinResponseHandler(c, res", m.ResponseBody, ")")
+	} else {
+		g.P("outGinResponseHandler(c, res)")
 	}
 	g.P("}")
-
-	// end
-	g.P("}")
-	g.P()
 }
 
 func generateBindRequest(g *protogen.GeneratedFile, m frames.MethodDesc) {
@@ -330,7 +349,7 @@ func generateBindRequest(g *protogen.GeneratedFile, m frames.MethodDesc) {
 			return
 		}`)
 	default:
-		g.P("if err := _RequestGinHandler(c, req", m.Body, "); err != nil {")
+		g.P("if err := bindGinRequestBodyHandler(c, req", m.Body, "); err != nil {")
 		g.P(abortErrorStr)
 		g.P("return")
 		g.P("}")
