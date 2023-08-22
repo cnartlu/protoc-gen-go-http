@@ -3,7 +3,6 @@ package gin
 import (
 	"fmt"
 	"net/http"
-	"path/filepath"
 
 	"github.com/cnartlu/protoc-gen-go-http/genhttp/frames"
 	"google.golang.org/genproto/googleapis/api/annotations"
@@ -22,15 +21,12 @@ func (g) Name() string {
 }
 
 var (
-	importBinding   = protogen.GoImportPath("github.com/gin-gonic/gin/binding")
-	importProtoJson = protogen.GoImportPath("google.golang.org/protobuf/encoding/protojson")
-	importProto     = protogen.GoImportPath("google.golang.org/protobuf/proto")
-	importNetHttp   = protogen.GoImportPath("net/http")
-	importGin       = protogen.GoImportPath("github.com/gin-gonic/gin")
-	importErrors    = protogen.GoImportPath("errors")
-	importContext   = protogen.GoImportPath("context")
-	importUnsafe    = protogen.GoImportPath("unsafe")
-	importIo        = protogen.GoImportPath("io")
+	importContext = protogen.GoImportPath("context")
+	importNetHttp = protogen.GoImportPath("net/http")
+	importGin     = protogen.GoImportPath("github.com/gin-gonic/gin")
+	importBinding = protogen.GoImportPath("github.com/gin-gonic/gin/binding")
+	importProto   = protogen.GoImportPath("google.golang.org/protobuf/proto")
+	importErrors  = protogen.GoImportPath("errors")
 )
 
 var (
@@ -83,113 +79,34 @@ func createUniquefunc(plugin *protogen.Plugin, file *protogen.File, g *protogen.
 	}
 	uniqueFuncs[string(file.GoImportPath)] = struct{}{}
 
-	g.QualifiedGoIdent(importBinding.Ident(""))
-	g.QualifiedGoIdent(importIo.Ident(""))
-	g.QualifiedGoIdent(importProtoJson.Ident(""))
-	g.QualifiedGoIdent(importGin.Ident(""))
-	g.Import(importUnsafe)
+	bindingValidator := g.QualifiedGoIdent(importBinding.Ident("Validator"))
+	ginContext := g.QualifiedGoIdent(importGin.Ident("Context"))
 
-	// Add an assembly file with the suffix name s(.s) to ensure that the go build command is executable,
-	// for details https://pkg.go.dev/cmd/compile
-	fileRouter := filepath.Dir(file.GeneratedFilenamePrefix) + "/" + filepath.Base(file.GeneratedFilenamePrefix) + ".s"
-	plugin.NewGeneratedFile(fileRouter, file.GoImportPath)
-
-	g.P("// defaultMemory default maximum parsing memory")
-	g.P("const defaultMemory", " = 32 << 20")
-	g.P()
-	//
-	g.P("//go:linkname validate ", string(importBinding), ".validate")
-	g.P("func validate(obj any) error")
-	g.P()
-	//
-	g.P("//go:linkname mappingByPtr ", string(importBinding), ".mappingByPtr")
-	g.P("func mappingByPtr(ptr any, setter any, tag string) error")
-	g.P()
-	//
-	g.P("//go:linkname ginParseAccept ", string(importGin), ".parseAccept")
-	g.P("func ginParseAccept(acceptHeader string) []string")
-	g.P()
-	//
-	g.P(`// RequestGinHandler customize the binding function, the binding method can be determined by binding parameter type and context
-	type RequestGinHandler func(c *gin.Context, req proto.Message) error
-	// ResponseGinHandler Custom response function, output response
-	type ResponseGinHandler func(c *gin.Context, res any)
-
+	g.P(`
 	var (
-		BindGinTagName string = "json"
-		// _BindGinRequestHandler binding handler
-		_BindGinRequestHandler RequestGinHandler
-		// _OutGinResponseHandler output response handler
-		_OutGinResponseHandler ResponseGinHandler
-
-		JSON = protojson.UnmarshalOptions{DiscardUnknown: true}
+		BindGinTagName = "json"
+		// GinResponseBodyKey represents the response content key
+		GinResponseBodyKey = "_gin-gonic/gin/responsebodykey"
+		// GinBindRequestBody binds the body parameter
+		GinBindRequestBody  = _ginBindRequestBody
 	)
 
-	func bindGinRequestBodyHandler(c *gin.Context, req proto.Message) error {
-		if _BindGinRequestHandler != nil {
-			return _BindGinRequestHandler(c, req)
-		}
-		switch c.ContentType() {
-		case binding.MIMEMultipartPOSTForm:
-			if err := c.Request.ParseMultipartForm(defaultMemory); err != nil {
-				return err
-			}
-			if err := mappingByPtr(req, c.Request, BindGinTagName); err != nil {
-				return err
-			}
-		case binding.MIMEPOSTForm:
-			if err := c.Request.ParseForm(); err != nil {
-				return err
-			}
-			if err := c.Request.ParseMultipartForm(defaultMemory); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-				return err
-			}
-			return binding.MapFormWithTag(req, c.Request.Form, BindGinTagName)
-		default:
-			bs, _ := io.ReadAll(c.Request.Body)
-			if len(bs) < 1 {
-				return nil
-			}
-			return JSON.Unmarshal(bs, req)
-		}
-		return nil
+	func SetGinBindRequestBody(f func(*`, ginContext, `, any) error) {
+		GinBindRequestBody = f
 	}
 
-	func outGinResponseHandler(c *gin.Context, res any) {
-		if c.Accepted == nil {
-			c.Accepted = ginParseAccept(c.Request.Header.Get("Accept"))
-		}
-		if _OutGinResponseHandler != nil {
-			_OutGinResponseHandler(c, res)
-			return
-		}
-		for _, accept := range c.Accepted {
-			switch accept {
-			case "application/json":
-				c.JSON(http.StatusOK, res)
-				return
-			case "application/xml","text/xml":
-				c.XML(http.StatusOK, res)
-				return
-			case "application/x-protobuf", "application/protobuf":
-				c.ProtoBuf(http.StatusOK, res)
-				return
-			default:
-			}
-		}
-		c.JSON(http.StatusOK, res)
+	// _ginBindRequestBody default bind handler
+	func _ginBindRequestBody(c *`, ginContext, `, req any) error {
+		return c.Bind(req)
 	}
 
-	// SetBindGinRequestHandler set binding handler
-	func SetBindGinRequestHandler(v RequestGinHandler) {
-		_BindGinRequestHandler = v
+	func ginValidate(obj any) error{
+		if `, bindingValidator, ` == nil{
+			return nil
+		}
+		return `, bindingValidator, `.ValidateStruct(obj)
 	}
-	
-	// SetOutGinResponseHandler set output response handler
-	func SetOutGinResponseHandler(v ResponseGinHandler) {
-		_OutGinResponseHandler = v
-	}`)
-	g.P()
+`)
 
 	generateBindParamsFunc(g)
 	generateBindQueryFunc(g)
@@ -200,23 +117,22 @@ func generateBindParamsFunc(g *protogen.GeneratedFile) {
 	ginErrorTypeBind := g.QualifiedGoIdent(importGin.Ident("ErrorTypeBind"))
 	protoMessage := g.QualifiedGoIdent(importProto.Ident("Message"))
 	httpStatusBadRequest := g.QualifiedGoIdent(importNetHttp.Ident("StatusBadRequest"))
-	g.P("func _Bind_Gin_Params(c *", ginContext, ", req ", protoMessage, ") error {")
-	g.P(`m := make(map[string][]string)
-	for _, v := range c.Params {
-		m[v.Key] = []string{v.Value}
+	bindingMapFormWithTag := g.QualifiedGoIdent(importBinding.Ident("MapFormWithTag"))
+
+	g.P(`func _Bind_Gin_Params(c *`, ginContext, `, req `, protoMessage, `) error {
+		m := make(map[string][]string)
+		for _, v := range c.Params {
+			m[v.Key] = []string{v.Value}
+		}
+		return `, bindingMapFormWithTag, `(req, m, BindGinTagName)
 	}
-	return binding.MapFormWithTag(req, m, BindGinTagName)`)
-	g.P("}")
-	g.P()
-	//
-	g.P("// _Must_Bind_Gin_Params must bind params")
-	g.P("func _Must_Bind_Gin_Params(c *", ginContext, ", req ", protoMessage, ") error {")
-	g.P("if err := _Bind_Gin_Params(c, req); err != nil {")
-	g.P("c.AbortWithError(", httpStatusBadRequest, ", err).SetType(", ginErrorTypeBind, ") //nolint: errcheck")
-	g.P("return err")
-	g.P("}")
-	g.P("return nil")
-	g.P("}")
+
+	func _Abort_Bind_Gin_Params(c *`, ginContext, `, req `, protoMessage, `) error {
+		if err := _Bind_Gin_Params(c, req); err != nil {
+			return c.AbortWithError(`, httpStatusBadRequest, `, err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
+		}
+		return nil
+	}`)
 	g.P()
 }
 
@@ -225,26 +141,24 @@ func generateBindQueryFunc(g *protogen.GeneratedFile) {
 	ginErrorTypeBind := g.QualifiedGoIdent(importGin.Ident("ErrorTypeBind"))
 	protoMessage := g.QualifiedGoIdent(importProto.Ident("Message"))
 	httpStatusBadRequest := g.QualifiedGoIdent(importNetHttp.Ident("StatusBadRequest"))
-	g.P("func _Bind_Gin_Query(c *", ginContext, ", req ", protoMessage, ") error {")
-	g.P(`query := c.Request.URL.Query()
+	bindingMapFormWithTag := g.QualifiedGoIdent(importBinding.Ident("MapFormWithTag"))
+
+	g.P(`func _Bind_Gin_Query(c *`, ginContext, `, req `, protoMessage, `) error {
+		query := c.Request.URL.Query()
 		for _, v := range c.Params {
 			if query.Get(v.Key) == "" {
 				query.Set(v.Key, v.Value)
 			}
 		}
-		return binding.MapFormWithTag(req, query, BindGinTagName)`)
-	g.P("}")
-	g.P()
-	//
-	g.P("// _Must_Bind_Gin_Query must bind query")
-	g.P("func _Must_Bind_Gin_Query(c *", ginContext, ", req ", protoMessage, ") error {")
-	g.P("if err := _Bind_Gin_Query(c, req); err != nil {")
-	g.P("c.AbortWithError(", httpStatusBadRequest, ", err).SetType(", ginErrorTypeBind, ") //nolint: errcheck")
-	g.P("return err")
-	g.P("}")
-	g.P("return nil")
-	g.P("}")
-	g.P()
+		return `, bindingMapFormWithTag, `(req, query, BindGinTagName)
+	}
+
+	func _Abort_Bind_Gin_Query(c *`, ginContext, `, req `, protoMessage, `) error {
+		if err := _Bind_Gin_Query(c, req); err != nil {
+			return c.AbortWithError(`, httpStatusBadRequest, `, err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
+		}
+		return nil
+	}`)
 }
 
 // generateUnimplemented
@@ -313,16 +227,18 @@ func generateHandlerMethod(g *protogen.GeneratedFile, service *protogen.Service,
 
 func generateHandlerMethodHandler(g *protogen.GeneratedFile, service *protogen.Service, m frames.MethodDesc) {
 	ginContextIdent := g.QualifiedGoIdent(importGin.Ident("Context"))
-	g.P("return func(c *", ginContextIdent, ") {")
-	g.P("req := new(", m.Input.GoIdent, ")")
+	statusInternalServerErrorIdent := g.QualifiedGoIdent(importNetHttp.Ident("StatusInternalServerError"))
+	errorTypeAnyIdent := g.QualifiedGoIdent(importGin.Ident("ErrorTypeAny"))
+
+	g.P(`return func(c *`, ginContextIdent, `) {
+		req := new(`, m.Input.GoIdent, `)`)
 	generateBindRequest(g, m)
-	g.P("res, err := srv.", m.GoName, "(c, req)")
-	g.P("if err != nil { c.Abort() \n c.Error(err) \n return }")
-	if m.ResponseBody != "" {
-		g.P("outGinResponseHandler(c, res", m.ResponseBody, ")")
-	} else {
-		g.P("outGinResponseHandler(c, res)")
+	g.P(`res, err := srv.`, m.GoName, `(c, req)
+	if err != nil {
+		c.AbortWithError(`, statusInternalServerErrorIdent, `, err).SetType(`, errorTypeAnyIdent, `) //nolint: errcheck
+		return
 	}
+	c.Set(GinResponseBodyKey, res`, m.ResponseBody, `)`)
 	g.P("}")
 }
 
@@ -336,27 +252,25 @@ func generateBindRequest(g *protogen.GeneratedFile, m frames.MethodDesc) {
 	httpStatusBadRequest := g.QualifiedGoIdent(importNetHttp.Ident("StatusBadRequest"))
 	// get and delete bind query and path params
 	if len(m.Params) > 0 {
-		g.P(`if err := _Must_Bind_Gin_Params(c, req); err != nil {
+		g.P(`if err := _Abort_Bind_Gin_Params(c, req); err != nil {
 			return
 		}`)
 	}
-
-	abortErrorStr := fmt.Sprintf("c.AbortWithError(%s, err).SetType(%s) //nolint: errcheck", httpStatusBadRequest, ginErrorTypeBind)
 
 	switch m.MethodName {
 	case http.MethodGet, http.MethodDelete:
-		g.P(`if err := _Must_Bind_Gin_Query(c, req`, m.Body, `); err != nil {
+		g.P(`if err := _Abort_Bind_Gin_Query(c, req`, m.Body, `); err != nil {
 			return
 		}`)
 	default:
-		g.P("if err := bindGinRequestBodyHandler(c, req", m.Body, "); err != nil {")
-		g.P(abortErrorStr)
-		g.P("return")
-		g.P("}")
+		g.P(`if err := GinBindRequestBody(c, req); err != nil {
+			c.AbortWithError(`, httpStatusBadRequest, `, err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
+			return
+	}`)
 	}
 
-	g.P("if err := validate(req); err != nil {")
-	g.P(abortErrorStr)
-	g.P("return")
-	g.P("}")
+	g.P(`if err := ginValidate(req); err != nil {
+		c.AbortWithError(`, httpStatusBadRequest, `, err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
+		return
+}`)
 }

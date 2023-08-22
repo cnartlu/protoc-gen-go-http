@@ -11,105 +11,33 @@ import (
 	errors "errors"
 	gin "github.com/gin-gonic/gin"
 	binding "github.com/gin-gonic/gin/binding"
-	protojson "google.golang.org/protobuf/encoding/protojson"
 	proto "google.golang.org/protobuf/proto"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	io "io"
 	http "net/http"
-	_ "unsafe"
 )
-
-// defaultMemory default maximum parsing memory
-const defaultMemory = 32 << 20
-
-//go:linkname validate github.com/gin-gonic/gin/binding.validate
-func validate(obj any) error
-
-//go:linkname mappingByPtr github.com/gin-gonic/gin/binding.mappingByPtr
-func mappingByPtr(ptr any, setter any, tag string) error
-
-//go:linkname ginParseAccept github.com/gin-gonic/gin.parseAccept
-func ginParseAccept(acceptHeader string) []string
-
-// RequestGinHandler customize the binding function, the binding method can be determined by binding parameter type and context
-type RequestGinHandler func(c *gin.Context, req proto.Message) error
-
-// ResponseGinHandler Custom response function, output response
-type ResponseGinHandler func(c *gin.Context, res any)
 
 var (
-	BindGinTagName string = "json"
-	// _BindGinRequestHandler binding handler
-	_BindGinRequestHandler RequestGinHandler
-	// _OutGinResponseHandler output response handler
-	_OutGinResponseHandler ResponseGinHandler
-
-	JSON = protojson.UnmarshalOptions{DiscardUnknown: true}
+	BindGinTagName = "json"
+	// GinResponseBodyKey represents the response content key
+	GinResponseBodyKey = "_gin-gonic/gin/responsebodykey"
+	// GinBindRequestBody binds the body parameter
+	GinBindRequestBody = _ginBindRequestBody
 )
 
-func bindGinRequestBodyHandler(c *gin.Context, req proto.Message) error {
-	if _BindGinRequestHandler != nil {
-		return _BindGinRequestHandler(c, req)
-	}
-	switch c.ContentType() {
-	case binding.MIMEMultipartPOSTForm:
-		if err := c.Request.ParseMultipartForm(defaultMemory); err != nil {
-			return err
-		}
-		if err := mappingByPtr(req, c.Request, BindGinTagName); err != nil {
-			return err
-		}
-	case binding.MIMEPOSTForm:
-		if err := c.Request.ParseForm(); err != nil {
-			return err
-		}
-		if err := c.Request.ParseMultipartForm(defaultMemory); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-			return err
-		}
-		return binding.MapFormWithTag(req, c.Request.Form, BindGinTagName)
-	default:
-		bs, _ := io.ReadAll(c.Request.Body)
-		if len(bs) < 1 {
-			return nil
-		}
-		return JSON.Unmarshal(bs, req)
-	}
-	return nil
+func SetGinBindRequestBody(f func(*gin.Context, any) error) {
+	GinBindRequestBody = f
 }
 
-func outGinResponseHandler(c *gin.Context, res any) {
-	if c.Accepted == nil {
-		c.Accepted = ginParseAccept(c.Request.Header.Get("Accept"))
-	}
-	if _OutGinResponseHandler != nil {
-		_OutGinResponseHandler(c, res)
-		return
-	}
-	for _, accept := range c.Accepted {
-		switch accept {
-		case "application/json":
-			c.JSON(http.StatusOK, res)
-			return
-		case "application/xml", "text/xml":
-			c.XML(http.StatusOK, res)
-			return
-		case "application/x-protobuf", "application/protobuf":
-			c.ProtoBuf(http.StatusOK, res)
-			return
-		default:
-		}
-	}
-	c.JSON(http.StatusOK, res)
+// _ginBindRequestBody default bind handler
+func _ginBindRequestBody(c *gin.Context, req any) error {
+	return c.Bind(req)
 }
 
-// SetBindGinRequestHandler set binding handler
-func SetBindGinRequestHandler(v RequestGinHandler) {
-	_BindGinRequestHandler = v
-}
-
-// SetOutGinResponseHandler set output response handler
-func SetOutGinResponseHandler(v ResponseGinHandler) {
-	_OutGinResponseHandler = v
+func ginValidate(obj any) error {
+	if binding.Validator == nil {
+		return nil
+	}
+	return binding.Validator.ValidateStruct(obj)
 }
 
 func _Bind_Gin_Params(c *gin.Context, req proto.Message) error {
@@ -120,11 +48,9 @@ func _Bind_Gin_Params(c *gin.Context, req proto.Message) error {
 	return binding.MapFormWithTag(req, m, BindGinTagName)
 }
 
-// _Must_Bind_Gin_Params must bind params
-func _Must_Bind_Gin_Params(c *gin.Context, req proto.Message) error {
+func _Abort_Bind_Gin_Params(c *gin.Context, req proto.Message) error {
 	if err := _Bind_Gin_Params(c, req); err != nil {
-		c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
-		return err
+		return c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 	}
 	return nil
 }
@@ -139,11 +65,9 @@ func _Bind_Gin_Query(c *gin.Context, req proto.Message) error {
 	return binding.MapFormWithTag(req, query, BindGinTagName)
 }
 
-// _Must_Bind_Gin_Query must bind query
-func _Must_Bind_Gin_Query(c *gin.Context, req proto.Message) error {
+func _Abort_Bind_Gin_Query(c *gin.Context, req proto.Message) error {
 	if err := _Bind_Gin_Query(c, req); err != nil {
-		c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
-		return err
+		return c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 	}
 	return nil
 }
@@ -201,128 +125,122 @@ func RegisterTestGinServer(r TestGinRouter, srv TestGinServer) {
 func _Test_List0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(ListTestRequest)
-		if err := _Must_Bind_Gin_Params(c, req); err != nil {
+		if err := _Abort_Bind_Gin_Params(c, req); err != nil {
 			return
 		}
-		if err := _Must_Bind_Gin_Query(c, req); err != nil {
+		if err := _Abort_Bind_Gin_Query(c, req); err != nil {
 			return
 		}
-		if err := validate(req); err != nil {
+		if err := ginValidate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.List(c, req)
 		if err != nil {
-			c.Abort()
-			c.Error(err)
+			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
-		outGinResponseHandler(c, res)
+		c.Set(GinResponseBodyKey, res)
 	}
 }
 
 func _Test_List1_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(ListTestRequest)
-		if err := _Must_Bind_Gin_Params(c, req); err != nil {
+		if err := _Abort_Bind_Gin_Params(c, req); err != nil {
 			return
 		}
-		if err := bindGinRequestBodyHandler(c, req); err != nil {
+		if err := GinBindRequestBody(c, req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate(req); err != nil {
+		if err := ginValidate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.List(c, req)
 		if err != nil {
-			c.Abort()
-			c.Error(err)
+			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
-		outGinResponseHandler(c, res)
+		c.Set(GinResponseBodyKey, res)
 	}
 }
 
 func _Test_Get0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(GetTestRequest)
-		if err := _Must_Bind_Gin_Query(c, req); err != nil {
+		if err := _Abort_Bind_Gin_Query(c, req); err != nil {
 			return
 		}
-		if err := validate(req); err != nil {
+		if err := ginValidate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.Get(c, req)
 		if err != nil {
-			c.Abort()
-			c.Error(err)
+			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
-		outGinResponseHandler(c, res)
+		c.Set(GinResponseBodyKey, res)
 	}
 }
 
 func _Test_Create0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(CreateTestRequest)
-		if err := bindGinRequestBodyHandler(c, req); err != nil {
+		if err := GinBindRequestBody(c, req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate(req); err != nil {
+		if err := ginValidate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.Create(c, req)
 		if err != nil {
-			c.Abort()
-			c.Error(err)
+			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
-		outGinResponseHandler(c, res)
+		c.Set(GinResponseBodyKey, res)
 	}
 }
 
 func _Test_Update0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(UpdateTestRequest)
-		if err := bindGinRequestBodyHandler(c, req); err != nil {
+		if err := GinBindRequestBody(c, req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
-		if err := validate(req); err != nil {
+		if err := ginValidate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.Update(c, req)
 		if err != nil {
-			c.Abort()
-			c.Error(err)
+			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
-		outGinResponseHandler(c, res)
+		c.Set(GinResponseBodyKey, res)
 	}
 }
 
 func _Test_Delete0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(DeleteTestRequest)
-		if err := _Must_Bind_Gin_Query(c, req); err != nil {
+		if err := _Abort_Bind_Gin_Query(c, req); err != nil {
 			return
 		}
-		if err := validate(req); err != nil {
+		if err := ginValidate(req); err != nil {
 			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.Delete(c, req)
 		if err != nil {
-			c.Abort()
-			c.Error(err)
+			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
-		outGinResponseHandler(c, res)
+		c.Set(GinResponseBodyKey, res)
 	}
 }
