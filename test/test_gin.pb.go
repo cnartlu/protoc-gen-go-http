@@ -50,7 +50,9 @@ func _Bind_Gin_Params(c *gin.Context, req proto.Message) error {
 
 func _Abort_Bind_Gin_Params(c *gin.Context, req proto.Message) error {
 	if err := _Bind_Gin_Params(c, req); err != nil {
-		return c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+		c.Status(http.StatusBadRequest)
+		c.Abort()
+		return c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 	}
 	return nil
 }
@@ -67,7 +69,9 @@ func _Bind_Gin_Query(c *gin.Context, req proto.Message) error {
 
 func _Abort_Bind_Gin_Query(c *gin.Context, req proto.Message) error {
 	if err := _Bind_Gin_Query(c, req); err != nil {
-		return c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+		c.Status(http.StatusBadRequest)
+		c.Abort()
+		return c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 	}
 	return nil
 }
@@ -132,12 +136,14 @@ func _Test_List0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 			return
 		}
 		if err := ginValidate(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.List(c, req)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
+			c.Status(http.StatusInternalServerError)
+			_ = c.Error(err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
 		c.Set(GinResponseBodyKey, res)
@@ -151,16 +157,19 @@ func _Test_List1_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 			return
 		}
 		if err := GinBindRequestBody(c, req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		if err := ginValidate(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.List(c, req)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
+			c.Status(http.StatusInternalServerError)
+			_ = c.Error(err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
 		c.Set(GinResponseBodyKey, res)
@@ -174,12 +183,14 @@ func _Test_Get0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 			return
 		}
 		if err := ginValidate(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.Get(c, req)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
+			c.Status(http.StatusInternalServerError)
+			_ = c.Error(err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
 		c.Set(GinResponseBodyKey, res)
@@ -190,16 +201,19 @@ func _Test_Create0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(CreateTestRequest)
 		if err := GinBindRequestBody(c, req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		if err := ginValidate(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.Create(c, req)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
+			c.Status(http.StatusInternalServerError)
+			_ = c.Error(err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
 		c.Set(GinResponseBodyKey, res)
@@ -210,16 +224,19 @@ func _Test_Update0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		req := new(UpdateTestRequest)
 		if err := GinBindRequestBody(c, req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		if err := ginValidate(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.Update(c, req)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
+			c.Status(http.StatusInternalServerError)
+			_ = c.Error(err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
 		c.Set(GinResponseBodyKey, res)
@@ -233,12 +250,14 @@ func _Test_Delete0_Gin_Handler(srv TestGinServer) gin.HandlerFunc {
 			return
 		}
 		if err := ginValidate(req); err != nil {
-			c.AbortWithError(http.StatusBadRequest, err).SetType(gin.ErrorTypeBind) //nolint: errcheck
+			c.Status(http.StatusBadRequest)
+			_ = c.Error(err).SetType(gin.ErrorTypeBind) //nolint: errcheck
 			return
 		}
 		res, err := srv.Delete(c, req)
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err).SetType(gin.ErrorTypeAny) //nolint: errcheck
+			c.Status(http.StatusInternalServerError)
+			_ = c.Error(err).SetType(gin.ErrorTypeAny) //nolint: errcheck
 			return
 		}
 		c.Set(GinResponseBodyKey, res)

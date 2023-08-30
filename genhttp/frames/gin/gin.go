@@ -129,7 +129,9 @@ func generateBindParamsFunc(g *protogen.GeneratedFile) {
 
 	func _Abort_Bind_Gin_Params(c *`, ginContext, `, req `, protoMessage, `) error {
 		if err := _Bind_Gin_Params(c, req); err != nil {
-			return c.AbortWithError(`, httpStatusBadRequest, `, err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
+			c.Status(`, httpStatusBadRequest, `)
+			c.Abort()
+			return c.Error(err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
 		}
 		return nil
 	}`)
@@ -155,7 +157,9 @@ func generateBindQueryFunc(g *protogen.GeneratedFile) {
 
 	func _Abort_Bind_Gin_Query(c *`, ginContext, `, req `, protoMessage, `) error {
 		if err := _Bind_Gin_Query(c, req); err != nil {
-			return c.AbortWithError(`, httpStatusBadRequest, `, err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
+			c.Status(`, httpStatusBadRequest, `)
+			c.Abort()
+			return c.Error(err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
 		}
 		return nil
 	}`)
@@ -235,7 +239,8 @@ func generateHandlerMethodHandler(g *protogen.GeneratedFile, service *protogen.S
 	generateBindRequest(g, m)
 	g.P(`res, err := srv.`, m.GoName, `(c, req)
 	if err != nil {
-		c.AbortWithError(`, statusInternalServerErrorIdent, `, err).SetType(`, errorTypeAnyIdent, `) //nolint: errcheck
+		c.Status(`, statusInternalServerErrorIdent, `)
+		_ = c.Error(err).SetType(`, errorTypeAnyIdent, `) //nolint: errcheck
 		return
 	}
 	c.Set(GinResponseBodyKey, res`, m.ResponseBody, `)`)
@@ -264,13 +269,15 @@ func generateBindRequest(g *protogen.GeneratedFile, m frames.MethodDesc) {
 		}`)
 	default:
 		g.P(`if err := GinBindRequestBody(c, req); err != nil {
-			c.AbortWithError(`, httpStatusBadRequest, `, err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
+			c.Status(`, httpStatusBadRequest, `)
+			_ = c.Error(err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
 			return
 	}`)
 	}
 
 	g.P(`if err := ginValidate(req); err != nil {
-		c.AbortWithError(`, httpStatusBadRequest, `, err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
+		c.Status(`, httpStatusBadRequest, `)
+		_ = c.Error(err).SetType(`, ginErrorTypeBind, `) //nolint: errcheck
 		return
 }`)
 }
